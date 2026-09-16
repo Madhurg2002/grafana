@@ -29,7 +29,10 @@ cp .env.example .env
 #   ENCRYPTION_KEY and JWT_SECRET: openssl rand -hex 32
 #   DATABASE_URL: your PostgreSQL instance
 
-# 3. Run backend (3000) and frontend (5173) together
+# 3. Initialize the database schema (idempotent, versioned migrations)
+npm run db:init --workspace backend
+
+# 4. Run backend (3000) and frontend (5173) together
 npm run dev
 
 # 4. Open the dashboard
