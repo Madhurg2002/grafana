@@ -19,6 +19,10 @@ export interface ConnectionRow {
   status: "connected" | "error" | "unknown";
   /** 'prometheus' | 'grafana' — defaults to 'prometheus' for legacy rows. */
   upstream_type?: string;
+  /** Human label distinguishing multiple connections per tenant. */
+  label?: string;
+  /** True for the connection queries/SSE currently resolve to. */
+  is_active?: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -31,6 +35,10 @@ export interface UpsertConnectionInput {
   status: "connected" | "error" | "unknown";
   /** Detected upstream flavor; defaults to 'prometheus'. */
   upstreamType?: "prometheus" | "grafana";
+  /** Human label for multi-connection switching (e.g. "prod", "staging"). */
+  label?: string;
+  /** Set false to store the connection without switching to it. */
+  activate?: boolean;
 }
 
 const globalForPool = globalThis as unknown as { __PG_POOL__?: Pool };
@@ -102,38 +110,160 @@ export async function tenantExists(tenantId: string): Promise<boolean> {
 }
 
 export async function upsertConnection(input: UpsertConnectionInput): Promise<ConnectionRow> {
+  const label = input.label ?? "default";
+  const activate = input.activate ?? true;
   const result: QueryResult<ConnectionRow> = await getPool().query(
     `INSERT INTO prometheus_connections
-       (tenant_id, prometheus_url, auth_token_encrypted, status, upstream_type)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (tenant_id) DO UPDATE SET
+       (tenant_id, prometheus_url, auth_token_encrypted, status, upstream_type, label, is_active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (tenant_id, label) DO UPDATE SET
        prometheus_url = EXCLUDED.prometheus_url,
        auth_token_encrypted = COALESCE(EXCLUDED.auth_token_encrypted,
                                        prometheus_connections.auth_token_encrypted),
        status = EXCLUDED.status,
        upstream_type = EXCLUDED.upstream_type,
+       is_active = EXCLUDED.is_active,
        updated_at = NOW()
      RETURNING id, tenant_id, prometheus_url, auth_token_encrypted,
-               status, upstream_type, created_at, updated_at`,
+               status, upstream_type, label, is_active, created_at, updated_at`,
     [
       input.tenantId,
       input.prometheusUrl,
       input.authTokenEncrypted,
       input.status,
       input.upstreamType ?? "prometheus",
+      label,
+      activate,
     ]
   );
+  if (activate) {
+    // Exactly one active connection per tenant (deferred to dodge the
+    // partial-unique index within the same statement batch).
+    await getPool().query(
+      `UPDATE prometheus_connections
+       SET is_active = (label = $2)
+       WHERE tenant_id = $1`,
+      [input.tenantId, label]
+    );
+  }
   return result.rows[0];
 }
 
 export async function getConnection(tenantId: string): Promise<ConnectionRow | null> {
   const result = await getPool().query<ConnectionRow>(
     `SELECT id, tenant_id, prometheus_url, auth_token_encrypted,
-            status, upstream_type, created_at, updated_at
-     FROM prometheus_connections WHERE tenant_id = $1`,
+            status, upstream_type, label, is_active, created_at, updated_at
+     FROM prometheus_connections
+     WHERE tenant_id = $1
+     ORDER BY is_active DESC, updated_at DESC
+     LIMIT 1`,
     [tenantId]
   );
   return result.rows[0] ?? null;
+}
+
+export interface PanelRow {
+  id: number;
+  tenant_id: string;
+  title: string;
+  promql: string;
+  kind: "sparkline" | "gauge" | "stat";
+  unit: string | null;
+  position: number;
+  created_at: Date;
+}
+
+export async function listConnections(tenantId: string): Promise<Array<ConnectionRow>> {
+  const result = await getPool().query<ConnectionRow>(
+    `SELECT id, tenant_id, prometheus_url, auth_token_encrypted,
+            status, upstream_type, label, is_active, created_at, updated_at
+     FROM prometheus_connections
+     WHERE tenant_id = $1
+     ORDER BY is_active DESC, updated_at DESC`,
+    [tenantId]
+  );
+  return result.rows;
+}
+
+/** Switches the tenant's active connection; returns the newly active row. */
+export async function activateConnection(
+  tenantId: string,
+  connectionId: number
+): Promise<ConnectionRow | null> {
+  const owned = await getPool().query<{ id: number }>(
+    "SELECT id FROM prometheus_connections WHERE id = $1 AND tenant_id = $2",
+    [connectionId, tenantId]
+  );
+  if (owned.rowCount !== 1) {
+    return null;
+  }
+  await getPool().query("BEGIN");
+  try {
+    await getPool().query(
+      "UPDATE prometheus_connections SET is_active = FALSE WHERE tenant_id = $1",
+      [tenantId]
+    );
+    const updated = await getPool().query<ConnectionRow>(
+      `UPDATE prometheus_connections SET is_active = TRUE
+       WHERE id = $1 AND tenant_id = $2
+       RETURNING id, tenant_id, prometheus_url, auth_token_encrypted,
+                 status, upstream_type, label, is_active, created_at, updated_at`,
+      [connectionId, tenantId]
+    );
+    await getPool().query("COMMIT");
+    return updated.rows[0] ?? null;
+  } catch (error) {
+    await getPool().query("ROLLBACK");
+    throw error;
+  }
+}
+
+export async function deleteConnection(tenantId: string, connectionId: number): Promise<boolean> {
+  const result = await getPool().query(
+    "DELETE FROM prometheus_connections WHERE id = $1 AND tenant_id = $2",
+    [connectionId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Custom dashboard panels (user-defined views)
+// ---------------------------------------------------------------------------
+
+export async function listPanels(tenantId: string): Promise<PanelRow[]> {
+  const result = await getPool().query<PanelRow>(
+    `SELECT id, tenant_id, title, promql, kind, unit, position, created_at
+     FROM dashboard_panels WHERE tenant_id = $1 ORDER BY position, id`,
+    [tenantId]
+  );
+  return result.rows;
+}
+
+export async function createPanel(input: {
+  tenantId: string;
+  title: string;
+  promql: string;
+  kind: "sparkline" | "gauge" | "stat";
+  unit?: string;
+}): Promise<PanelRow> {
+  const result = await getPool().query<PanelRow>(
+    `INSERT INTO dashboard_panels (tenant_id, title, promql, kind, unit, position)
+     VALUES ($1, $2, $3, $4, $5,
+             COALESCE((SELECT MAX(position) + 1 FROM dashboard_panels WHERE tenant_id = $1), 0))
+     ON CONFLICT (tenant_id, title) DO UPDATE SET
+       promql = EXCLUDED.promql, kind = EXCLUDED.kind, unit = EXCLUDED.unit
+     RETURNING id, tenant_id, title, promql, kind, unit, position, created_at`,
+    [input.tenantId, input.title, input.promql, input.kind, input.unit ?? null]
+  );
+  return result.rows[0];
+}
+
+export async function deletePanel(tenantId: string, panelId: number): Promise<boolean> {
+  const result = await getPool().query(
+    "DELETE FROM dashboard_panels WHERE id = $1 AND tenant_id = $2",
+    [panelId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function healthcheck(): Promise<boolean> {

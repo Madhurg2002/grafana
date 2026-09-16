@@ -1,6 +1,7 @@
 import type { Migration } from "./runner.js";
 import { M003 } from "./003-users.js";
 import { M004 } from "./004-upstream-type.js";
+import { M005 } from "./005-multi-connection-panels.js";
 
 /**
  * Ordered, immutable migrations. Once applied, a migration's SQL MUST NOT be
@@ -60,4 +61,5 @@ export const MIGRATIONS: Migration[] = [
   { name: "002_indexes_and_triggers", sql: M002_INDEXES_AND_TRIGGERS },
   M003,
   M004,
+  M005,
 ];
