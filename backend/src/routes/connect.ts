@@ -1,7 +1,18 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { encryptToken } from "../db/encryption.js";
-import { upsertTenant, upsertConnection, getConnection } from "../db/schema.js";
+import {
+  upsertTenant,
+  upsertConnection,
+  getConnection,
+  listConnections,
+  activateConnection,
+  deleteConnection,
+  listPanels,
+  createPanel,
+  deletePanel,
+} from "../db/schema.js";
+import { normalizePromQL } from "../services/prometheus.js";
 import { getEnv } from "../config/env.js";
 import { detectUpstream } from "../services/upstream.js";
 
@@ -18,6 +29,17 @@ const connectSchema = z.object({
   authToken: z.string().max(4096).optional(),
   /** Explicit override; omitted = auto-detect. */
   upstreamType: z.enum(["prometheus", "grafana"]).optional(),
+  /** Label for multi-connection switching; defaults to "default". */
+  label: z.string().min(1).max(64).regex(/^[a-zA-Z0-9-_ ]+$/).optional(),
+  /** Store without switching (default: switch to the new connection). */
+  activate: z.boolean().optional(),
+});
+
+const panelSchema = z.object({
+  title: z.string().min(1).max(80),
+  promql: z.string().min(1).max(4096),
+  kind: z.enum(["sparkline", "gauge", "stat"]).default("sparkline"),
+  unit: z.string().max(24).optional(),
 });
 
 export interface ConnectResponse {
@@ -27,6 +49,9 @@ export interface ConnectResponse {
   latencyMs: number;
   upstreamType: "prometheus" | "grafana";
   detail: string;
+  connectionId?: number;
+  label?: string;
+  activated?: boolean;
   error?: string;
 }
 
@@ -43,7 +68,7 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
         })),
       });
     }
-    const { tenantId, prometheusUrl, authToken, upstreamType } = parsed.data;
+    const { tenantId, prometheusUrl, authToken, upstreamType, label, activate } = parsed.data;
     const startedAt = Date.now();
 
     // Detect/resolve the upstream (direct Prometheus or Grafana datasource).
@@ -97,12 +122,14 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
         : null;
 
     await upsertTenant(tenantId, tenantId);
-    await upsertConnection({
+    const saved = await upsertConnection({
       tenantId,
       prometheusUrl: detection.queryBaseUrl,
       authTokenEncrypted: encrypted,
       status: probeOk ? "connected" : "error",
       upstreamType: detection.type,
+      label: label ?? ("default" as const),
+      activate: activate ?? true,
     });
 
     const response: ConnectResponse = {
@@ -112,6 +139,9 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
       latencyMs: Date.now() - probeStarted,
       upstreamType: detection.type,
       detail: detection.detail,
+      connectionId: saved.id,
+      label: saved.label ?? "default",
+      activated: activate ?? true,
       ...(probeError !== undefined ? { error: probeError } : {}),
     };
     return reply.code(probeOk ? 200 : 502).send(response);
@@ -139,6 +169,124 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
       });
     }
   );
+
+  /**
+   * GET /api/connections/:tenantId — all stored URIs with the active one
+   * flagged, so the UI can render the switcher and edit/delete controls.
+   */
+app.get<{ Params: { tenantId: string } }>(
+  "/api/connections/:tenantId",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    if (!tenantId.success) {
+      return reply.code(400).send({ error: "Invalid tenantId" });
+    }
+    const connections = await listConnections(tenantId.data);
+    return reply.code(200).send({
+      connections: connections.map((c) => ({
+        id: c.id,
+        label: c.label ?? "default",
+        status: c.status,
+        upstreamType: c.upstream_type ?? "prometheus",
+        upstreamHost: safeHost(c.prometheus_url),
+        isActive: c.is_active ?? false,
+        hasToken: c.auth_token_encrypted !== null,
+        updatedAt: c.updated_at,
+      })),
+    });
+  }
+);
+
+/** POST /api/connections/:tenantId/:id/activate — switch without reconnecting. */
+app.post<{ Params: { tenantId: string; id: string } }>(
+  "/api/connections/:tenantId/:id/activate",
+  async (request, reply) => {
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!id.success) {
+      return reply.code(400).send({ error: "Invalid connection id" });
+    }
+    const activated = await activateConnection(request.params.tenantId, id.data);
+    if (activated === null) {
+      return reply.code(404).send({ error: "Connection not found for this tenant" });
+    }
+    return reply.code(200).send({
+      activated: true,
+      id: activated.id,
+      label: activated.label ?? "default",
+    });
+  }
+);
+
+/** DELETE /api/connections/:tenantId/:id — forget a stored URI. */
+app.delete<{ Params: { tenantId: string; id: string } }>(
+  "/api/connections/:tenantId/:id",
+  async (request, reply) => {
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!id.success) {
+      return reply.code(400).send({ error: "Invalid connection id" });
+    }
+    const removed = await deleteConnection(request.params.tenantId, id.data);
+    return reply.code(removed ? 200 : 404).send({ removed });
+  }
+);
+
+// ---------------------------------------------------------------------------
+// Custom dashboard panels (user-defined views)
+// ---------------------------------------------------------------------------
+
+/** GET /api/panels/:tenantId — ordered list of the tenant's custom panels. */
+app.get<{ Params: { tenantId: string } }>("/api/panels/:tenantId", async (request, reply) => {
+  const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+  if (!tenantId.success) {
+    return reply.code(400).send({ error: "Invalid tenantId" });
+  }
+  const panels = await listPanels(tenantId.data);
+  return reply.code(200).send({ panels });
+});
+
+/** POST /api/panels/:tenantId — create/upsert a panel (title is the key). */
+app.post<{ Params: { tenantId: string }; Body: unknown }>(
+  "/api/panels/:tenantId",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    if (!tenantId.success) {
+      return reply.code(400).send({ error: "Invalid tenantId" });
+    }
+    const parsed = panelSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "Invalid panel body",
+        details: parsed.error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message,
+        })),
+      });
+    }
+    // Store the NORMALIZED query so saved panels always obey safety laws.
+    const normalized = normalizePromQL(parsed.data.promql);
+    const panel = await createPanel({
+      tenantId: tenantId.data,
+      title: parsed.data.title,
+      promql: normalized,
+      kind: parsed.data.kind,
+      unit: parsed.data.unit,
+    });
+    return reply.code(201).send({ panel });
+  }
+);
+
+/** DELETE /api/panels/:tenantId/:id */
+app.delete<{ Params: { tenantId: string; id: string } }>(
+  "/api/panels/:tenantId/:id",
+  async (request, reply) => {
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!id.success) {
+      return reply.code(400).send({ error: "Invalid panel id" });
+    }
+    const removed = await deletePanel(request.params.tenantId, id.data);
+    return reply.code(removed ? 200 : 404).send({ removed });
+  }
+);
 }
 
 function safeHost(url: string): string | null {

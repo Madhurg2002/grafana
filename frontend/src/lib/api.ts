@@ -186,3 +186,109 @@ export interface ShareViewPayload {
 export function fetchShareView(id: string): Promise<ShareViewPayload> {
   return authedJson<ShareViewPayload>(`/api/share/${encodeURIComponent(id)}/view`);
 }
+
+// ---------------------------------------------------------------------------
+// Multi-connection management (store several URIs, switch without reconnect)
+// ---------------------------------------------------------------------------
+
+export interface ConnectionSummary {
+  id: number;
+  label: string;
+  status: "connected" | "error" | "unknown";
+  upstreamType: "prometheus" | "grafana";
+  upstreamHost: string | null;
+  isActive: boolean;
+  hasToken: boolean;
+  updatedAt: string;
+}
+
+export function listConnections(tenantId: string): Promise<{ connections: ConnectionSummary[] }> {
+  return authedJson<{ connections: ConnectionSummary[] }>(
+    `/api/connections/${encodeURIComponent(tenantId)}`
+  );
+}
+
+export function activateConnection(
+  tenantId: string,
+  id: number
+): Promise<{ activated: boolean; id: number; label: string }> {
+  return authedJson<{ activated: boolean; id: number; label: string }>(
+    `/api/connections/${encodeURIComponent(tenantId)}/${id}/activate`,
+    { method: "POST" }
+  );
+}
+
+export function deleteConnection(tenantId: string, id: number): Promise<{ removed: boolean }> {
+  return authedJson<{ removed: boolean }>(
+    `/api/connections/${encodeURIComponent(tenantId)}/${id}`,
+    { method: "DELETE" }
+  );
+}
+
+export function connectWithLabel(
+  tenantId: string,
+  prometheusUrl: string,
+  options: { authToken?: string; label?: string } = {}
+): Promise<ConnectResponse> {
+  return authedJson<ConnectResponse>("/api/connect", {
+    method: "POST",
+    body: JSON.stringify({
+      tenantId,
+      prometheusUrl,
+      ...(options.label !== undefined && options.label.length > 0
+        ? { label: options.label }
+        : {}),
+      ...(options.authToken !== undefined && options.authToken.length > 0
+        ? { authToken: options.authToken }
+        : {}),
+    }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Custom dashboard panels (user-defined views)
+// ---------------------------------------------------------------------------
+
+export type PanelKind = "sparkline" | "gauge" | "stat";
+
+export interface DashboardPanel {
+  id: number;
+  tenant_id: string;
+  title: string;
+  promql: string;
+  kind: PanelKind;
+  unit: string | null;
+  position: number;
+  created_at: string;
+}
+
+export function listPanels(tenantId: string): Promise<{ panels: DashboardPanel[] }> {
+  return authedJson<{ panels: DashboardPanel[] }>(
+    `/api/panels/${encodeURIComponent(tenantId)}`
+  );
+}
+
+export function createPanel(
+  tenantId: string,
+  panel: { title: string; promql: string; kind: PanelKind; unit?: string }
+): Promise<{ panel: DashboardPanel }> {
+  return authedJson<{ panel: DashboardPanel }>(
+    `/api/panels/${encodeURIComponent(tenantId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        title: panel.title,
+        promql: panel.promql,
+        kind: panel.kind,
+        ...(panel.unit !== undefined && panel.unit.length > 0 ? { unit: panel.unit } : {}),
+      }),
+    }
+  );
+}
+
+export function deletePanel(tenantId: string, id: number): Promise<{ removed: boolean }> {
+  return authedJson<{ removed: boolean }>(
+    `/api/panels/${encodeURIComponent(tenantId)}/${id}`,
+    { method: "DELETE" }
+  );
+}

@@ -37,8 +37,9 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Per-host drill-down pages | ⏳ | Dashboard aggregates; clicking a host in a table doesn't filter gauges/sparklines to it. |
 | Dashboard refresh controls (manual refresh, window picker) | ⏳ | Instant metrics poll every 15s, sparklines fetched once per mount; no user-facing refresh/window controls. |
 | Alerting (threshold → email/Slack) | ⏳ | The biggest Grafana-parity gap; needs an alerts table + notifier service + UI. |
-| Custom queries / panel builder | ⏳ | UI ships only the fixed safe query set; `/api/query` accepts arbitrary (normalized) PromQL but there's no UI for it. |
-| Multiple dashboards / saved views per user | ⏳ | One implicit workspace tenant per account. |
+| Custom queries / panel builder | ✅ | `CustomPanels` UI: titled PromQL panels (sparkline/gauge/stat) persisted in `dashboard_panels`, normalized server-side, rendered live. Editing = delete + recreate. |
+| Multiple dashboards / saved views per user | 🔶 | Custom panels per tenant ship; multiple *named dashboards* (groups of panels) still deferred. |
+| Multiple upstream URIs per tenant + switcher | ✅ | Migration 005 (multi-row `prometheus_connections`, partial unique active index); header `ConnectionSwitcher` lists/activates/deletes without re-entering credentials. |
 | Log/trace correlation, non-Prometheus datasources | ⏳ | Out of scope by design (Prometheus-only per spec). |
 
 ## Environment / Ops

@@ -11,6 +11,8 @@ import { HealthBadge } from "./HealthBadge";
 import { StatusCard } from "./StatusCard";
 import { GaugeCard } from "./GaugeCard";
 import { SparkLineCard } from "./SparkLineCard";
+import { ConnectionSwitcher } from "./ConnectionSwitcher";
+import { CustomPanels } from "./CustomPanels";
 import { DEFAULT_QUERIES, useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
 import { useSSE } from "../hooks/useSSE";
 import { useAuth } from "../hooks/useAuth";
@@ -29,6 +31,7 @@ function latestScalar(
 export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
   const { status } = useSSE(tenantId);
   const { token } = useAuth();
+  const [activeLabel, setActiveLabel] = useState<string>("default");
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareError, setShareError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
@@ -59,10 +62,18 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
             <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
             <span className="text-sm font-semibold tracking-tight">Passthrough</span>
             <span className="hidden text-xs text-zinc-500 sm:inline">
-              tenant: {tenantId}
+              tenant: {tenantId} · {activeLabel}
             </span>
           </div>
-          <HealthBadge status={status} />
+          <div className="flex items-center gap-2">
+            {token !== null ? (
+              <ConnectionSwitcher
+                tenantId={tenantId}
+                onActiveChanged={setActiveLabel}
+              />
+            ) : null}
+            <HealthBadge status={status} />
+          </div>
         </div>
       </header>
 
@@ -141,6 +152,8 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
             stroke="#60a5fa"
           />
         </section>
+
+        {token !== null ? <CustomPanels tenantId={tenantId} /> : null}
 
         <motion.p
           initial={{ opacity: 0 }}
