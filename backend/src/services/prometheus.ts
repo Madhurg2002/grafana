@@ -347,6 +347,121 @@ async function promRequest(
   }
 }
 
+export interface LabelValuesResult {
+  label: string;
+  values: string[];
+  cached: boolean;
+}
+
+/**
+ * `/api/v1/label/<name>/values` through the tenant's upstream — powers the
+ * PromQL helper (instance/job autocompletion in the panel builder).
+ * Breaker-wrapped like the query paths; uncached (labels change rarely, the
+ * caller can rate-limit via the frontend).
+ */
+export async function fetchLabelValues(
+  tenantId: string,
+  label: string
+): Promise<LabelValuesResult> {
+  const cleanLabel = label.replace(/[^a-zA-Z0-9_]/g, "").slice(0, 64);
+  if (cleanLabel.length === 0) {
+    throw new PrometheusClientError("Invalid label name", 400);
+  }
+  const upstream = await resolveTenantUpstream(tenantId);
+  const breaker = getCircuitBreaker();
+  try {
+    return await breaker.execute(async () => {
+      const headers: Record<string, string> = { accept: "application/json" };
+      if (upstream.authHeader !== null) {
+        headers.authorization = upstream.authHeader;
+      }
+      const response = await request(
+        `${upstream.baseUrl}/api/v1/label/${cleanLabel}/values`,
+        { method: "GET", headers, bodyTimeout: 3000, headersTimeout: 3000 }
+      );
+      if (response.statusCode >= 400) {
+        await response.body.dump();
+        throw new PrometheusClientError(
+          `Prometheus responded with ${response.statusCode}`,
+          response.statusCode
+        );
+      }
+      const body = (await response.body.json()) as {
+        status?: string;
+        data?: string[];
+      };
+      if (body.status !== "success" || !Array.isArray(body.data)) {
+        throw new PrometheusClientError("Unexpected label-values response", 502);
+      }
+      return { label: cleanLabel, values: body.data, cached: false };
+    });
+  } catch (error) {
+    if (error instanceof CircuitOpenError || error instanceof PrometheusClientError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new PrometheusClientError(`Label values request failed — ${message}`);
+  }
+}
+
+export interface MetricNamesResult {
+  names: string[];
+  cached: boolean;
+}
+
+/**
+ * `/api/v1/label/__name__/values` — every metric name the upstream knows.
+ * Cached 5 min (it is large and slow-changing) so the helper feels instant.
+ */
+export async function fetchMetricNames(tenantId: string): Promise<MetricNamesResult> {
+  const cache = getQueryCache();
+  const cacheKey = `metric-names:${tenantId}`;
+  const cached = cache.get(cacheKey);
+  if (cached !== undefined) {
+    return { ...(cached.value as MetricNamesResult), cached: true };
+  }
+  const upstream = await resolveTenantUpstream(tenantId);
+  const breaker = getCircuitBreaker();
+  try {
+    const names = await breaker.execute(async () => {
+      const headers: Record<string, string> = { accept: "application/json" };
+      if (upstream.authHeader !== null) {
+        headers.authorization = upstream.authHeader;
+      }
+      const response = await request(
+        `${upstream.baseUrl}/api/v1/label/__name__/values`,
+        { method: "GET", headers, bodyTimeout: 5000, headersTimeout: 5000 }
+      );
+      if (response.statusCode >= 400) {
+        await response.body.dump();
+        throw new PrometheusClientError(
+          `Prometheus responded with ${response.statusCode}`,
+          response.statusCode
+        );
+      }
+      const body = (await response.body.json()) as {
+        status?: string;
+        data?: string[];
+      };
+      if (body.status !== "success" || !Array.isArray(body.data)) {
+        throw new PrometheusClientError("Unexpected metric-names response", 502);
+      }
+      return body.data;
+    });
+    const result: MetricNamesResult = { names, cached: false };
+    // Cache is constructed with the 300s TTL; metric catalogs are stable and
+    // this endpoint is heavy, so it rides the same window as queries.
+    cache.set(cacheKey, result);
+    return result;
+  } catch (error) {
+    if (error instanceof CircuitOpenError || error instanceof PrometheusClientError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new PrometheusClientError(`Metric names request failed — ${message}`);
+  }
+}
+
 /** Instant query via `/api/v1/query` (cached, breaker-wrapped, normalized). */
 export async function instantQuery(options: QueryOptions): Promise<{
   result: PromQueryResult;

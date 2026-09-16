@@ -3,6 +3,8 @@ import { Plug, BarChart3, LineChart } from "lucide-react";
 import { motion } from "framer-motion";
 import { connectTenant, type ConnectResponse } from "../lib/api";
 
+export type UpstreamFlavor = "prometheus" | "grafana" | "auto";
+
 export interface ConnectFormProps {
   onConnected: (tenantId: string) => void;
   /** When set (signed-in users), the tenant is fixed and hidden from the form. */
@@ -13,6 +15,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
   const [tenantId, setTenantId] = useState(fixedTenantId ?? "");
   const [prometheusUrl, setPrometheusUrl] = useState("");
   const [authToken, setAuthToken] = useState("");
+  const [flavor, setFlavor] = useState<UpstreamFlavor>("auto");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ConnectResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +27,12 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
     setError(null);
     setResult(null);
     try {
-      const response = await connectTenant(tenantId, prometheusUrl, authToken || undefined);
+      const response = await connectTenant(
+        tenantId,
+        prometheusUrl,
+        authToken || undefined,
+        flavor === "auto" ? undefined : flavor
+      );
       setResult(response);
       if (response.ok) {
         setFailedOnce(false);
@@ -58,6 +66,42 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
         <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
           Connect your monitoring stack
         </h2>
+      </div>
+
+      {/* Prometheus / Grafana / Auto toggle — narrows the fields shown. */}
+      <div
+        className="mt-4 grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-900/50 p-1"
+        role="tablist"
+        aria-label="Upstream type"
+      >
+        {(
+          [
+            { key: "auto", label: "Auto" },
+            { key: "prometheus", label: "Prometheus" },
+            { key: "grafana", label: "Grafana" },
+          ] as Array<{ key: UpstreamFlavor; label: string }>
+        ).map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            role="tab"
+            aria-selected={flavor === option.key}
+            data-testid={`flavor-${option.key}`}
+            onClick={() => setFlavor(option.key)}
+            className={`flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+              flavor === option.key
+                ? "bg-emerald-500/15 text-emerald-300"
+                : "text-zinc-500 hover:text-zinc-300"
+            }`}
+          >
+            {option.key === "grafana" ? (
+              <BarChart3 className="h-3.5 w-3.5" aria-hidden />
+            ) : option.key === "prometheus" ? (
+              <LineChart className="h-3.5 w-3.5" aria-hidden />
+            ) : null}
+            {option.label}
+          </button>
+        ))}
       </div>
 
       <div className="mt-5 space-y-4">
@@ -99,7 +143,18 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
         </div>
         <div>
           <label htmlFor="authToken" className="mb-1 block text-xs text-zinc-400">
-            Auth token <span className="text-zinc-600">(optional — Prometheus bearer or Grafana service-account token, encrypted at rest)</span>
+            {flavor === "grafana"
+              ? "Grafana service-account token "
+              : flavor === "prometheus"
+                ? "Prometheus bearer token "
+                : "Auth token "}
+            <span className="text-zinc-600">
+              (
+              {flavor === "grafana"
+                ? "required for Grafana — Administration → Service accounts"
+                : "optional, encrypted at rest"}
+              )
+            </span>
           </label>
           <input
             id="authToken"

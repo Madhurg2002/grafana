@@ -4,9 +4,70 @@ import { CircuitOpenError } from "../services/circuitBreaker.js";
 import {
   instantQuery,
   rangeQuery,
+  fetchMetricNames,
+  fetchLabelValues,
   PrometheusClientError,
   type PromQueryResult,
 } from "../services/prometheus.js";
+
+/**
+ * Curated, safety-law-compliant starter queries surfaced in the panel
+ * builder so users never start from a blank page.
+ */
+export const PROMQL_RECIPES: Array<{
+  title: string;
+  promql: string;
+  kind: string;
+  unit: string;
+}> = [
+  {
+    title: "CPU per host (%)",
+    promql:
+      '100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)',
+    kind: "gauge",
+    unit: "%",
+  },
+  {
+    title: "RAM used (%)",
+    promql:
+      "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+    kind: "gauge",
+    unit: "%",
+  },
+  {
+    title: "Network RX (physical NICs)",
+    promql:
+      'rate(node_network_receive_bytes_total{device=~"eth.*|ens.*|eno.*|bond.*"}[5m])',
+    kind: "sparkline",
+    unit: "bytes/s",
+  },
+  {
+    title: "Network TX (physical NICs)",
+    promql:
+      'rate(node_network_transmit_bytes_total{device=~"eth.*|ens.*|eno.*|bond.*"}[5m])',
+    kind: "sparkline",
+    unit: "bytes/s",
+  },
+  {
+    title: "Disk busy time (%)",
+    promql:
+      'rate(node_disk_io_time_seconds_total{device=~"sd.*|vd.*|nvme.*|xvd.*"}[5m]) * 100',
+    kind: "gauge",
+    unit: "%",
+  },
+  {
+    title: "Hosts up ratio",
+    promql: "sum(up) / count(up)",
+    kind: "stat",
+    unit: "%",
+  },
+  {
+    title: "Request rate — adapt the metric name to your app",
+    promql: "sum(rate(http_requests_total[5m]))",
+    kind: "sparkline",
+    unit: "req/s",
+  },
+];
 
 /** Last known good results per tenant — circuit-open fallback. */
 const lastKnownValues = new Map<
@@ -131,5 +192,54 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
       const { code, message } = upstreamErrorReply(error);
       return reply.code(code).send({ error: message });
     }
+  });
+
+  // -----------------------------------------------------------------------
+  // PromQL helper: metric catalog + label values from the connected upstream
+  // -----------------------------------------------------------------------
+
+  /** GET /api/metrics/:tenantId — every metric name the upstream exposes. */
+  app.get<{ Params: { tenantId: string } }>(
+    "/api/metrics/:tenantId",
+    async (request, reply) => {
+      const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+      if (!tenantId.success) {
+        return reply.code(400).send({ error: "Invalid tenantId" });
+      }
+      try {
+        const { names, cached } = await fetchMetricNames(tenantId.data);
+        return reply.code(200).send({ names, cached });
+      } catch (error) {
+        const { code, message } = upstreamErrorReply(error);
+        return reply.code(code).send({ error: message });
+      }
+    }
+  );
+
+  /** GET /api/labels/:tenantId/:label — values for one label (instance, job…). */
+  app.get<{ Params: { tenantId: string; label: string } }>(
+    "/api/labels/:tenantId/:label",
+    async (request, reply) => {
+      const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+      const label = z
+        .string()
+        .regex(/^[a-zA-Z0-9_]{1,64}$/)
+        .safeParse(request.params.label);
+      if (!tenantId.success || !label.success) {
+        return reply.code(400).send({ error: "Invalid tenantId or label" });
+      }
+      try {
+        const result = await fetchLabelValues(tenantId.data, label.data);
+        return reply.code(200).send(result);
+      } catch (error) {
+        const { code, message } = upstreamErrorReply(error);
+        return reply.code(code).send({ error: message });
+      }
+    }
+  );
+
+  /** GET /api/promql/recipes — curated starter queries for the panel builder. */
+  app.get("/api/promql/recipes", async (_request, reply) => {
+    return reply.code(200).send({ recipes: PROMQL_RECIPES });
   });
 }

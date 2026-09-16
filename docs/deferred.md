@@ -35,10 +35,13 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Custom 404 page | ✅ | SPA rewrite (`frontend/vercel.json`) + branded NotFoundPage |
 | Share button + clipboard + public `/share/:id` (30s refresh) | ✅ | |
 | Friendly connect/auth error copy + demo-Prometheus fallback button | ✅ | Verified working public demo: `https://prometheus.demo.prometheus.io` (the old `prometheus.demo.do.prometheus.io` no longer resolves — do not suggest it). |
-| Per-host drill-down pages | ⏳ | Dashboard aggregates; clicking a host in a table doesn't filter gauges/sparklines to it. |
+| Per-host drill-down pages | 🔶 | Hosts table now on the live dashboard (matches the share view); click-to-filter gauges/sparklines still deferred. |
 | Dashboard refresh controls (manual refresh, window picker) | ⏳ | Instant metrics poll every 15s, sparklines fetched once per mount; no user-facing refresh/window controls. |
 | Alerting (threshold → email/Slack) | ⏳ | The biggest Grafana-parity gap; needs an alerts table + notifier service + UI. |
 | Custom queries / panel builder | ✅ | `CustomPanels` UI: titled PromQL panels (sparkline/gauge/stat) persisted in `dashboard_panels`, normalized server-side, rendered live. Editing = delete + recreate. |
+| PromQL helper (autocomplete + recipes) | ✅ | `GET /api/metrics/:tenantId` (cached metric catalog), `GET /api/labels/:tenantId/:label`, `GET /api/promql/recipes`; `PromqlHelper` suggests metrics/instances from the CONNECTED upstream inside the panel builder. |
+| Prometheus/Grafana toggle in connect UI | ✅ | Auto/Prometheus/Grafana segmented control; label copy + token requirements adapt per flavor (`upstreamType` override hits the backend's existing mismatch check). |
+| Share view = live dashboard parity | ✅ | Share snapshots now include network RX/TX series (same 60m/5m window); live dashboard now includes the hosts table. |
 | Multiple dashboards / saved views per user | 🔶 | Custom panels per tenant ship; multiple *named dashboards* (groups of panels) still deferred. |
 | Multiple upstream URIs per tenant + switcher | ✅ | Migration 005 (multi-row `prometheus_connections`, partial unique active index); header `ConnectionSwitcher` lists/activates/deletes without re-entering credentials. |
 | Log/trace correlation, non-Prometheus datasources | ⏳ | Out of scope by design (Prometheus-only per spec). |

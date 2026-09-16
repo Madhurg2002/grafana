@@ -65,12 +65,14 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 export function connectTenant(
   tenantId: string,
   prometheusUrl: string,
-  authToken?: string
+  authToken?: string,
+  upstreamType?: "prometheus" | "grafana"
 ): Promise<ConnectResponse> {
   return postJson<ConnectResponse>("/api/connect", {
     tenantId,
     prometheusUrl,
     ...(authToken !== undefined && authToken.length > 0 ? { authToken } : {}),
+    ...(upstreamType !== undefined ? { upstreamType } : {}),
   });
 }
 
@@ -179,6 +181,8 @@ export interface ShareViewPayload {
     hostsTotal: number;
     cpuPercent: number | null;
     ramPercent: number | null;
+    networkRxSeries: Array<{ label: string; points: Array<{ timestamp: number; value: number }> }>;
+    networkTxSeries: Array<{ label: string; points: Array<{ timestamp: number; value: number }> }>;
   };
   generatedAt: string;
 }
@@ -291,4 +295,34 @@ export function deletePanel(tenantId: string, id: number): Promise<{ removed: bo
     `/api/panels/${encodeURIComponent(tenantId)}/${id}`,
     { method: "DELETE" }
   );
+}
+
+// ---------------------------------------------------------------------------
+// PromQL helper — metric catalog, label values, curated recipes
+// ---------------------------------------------------------------------------
+
+export function fetchMetricNames(tenantId: string): Promise<{ names: string[]; cached: boolean }> {
+  return authedJson<{ names: string[]; cached: boolean }>(
+    `/api/metrics/${encodeURIComponent(tenantId)}`
+  );
+}
+
+export function fetchLabelValues(
+  tenantId: string,
+  label: string
+): Promise<{ label: string; values: string[]; cached: boolean }> {
+  return authedJson<{ label: string; values: string[]; cached: boolean }>(
+    `/api/labels/${encodeURIComponent(tenantId)}/${encodeURIComponent(label)}`
+  );
+}
+
+export interface PromqlRecipe {
+  title: string;
+  promql: string;
+  kind: string;
+  unit: string;
+}
+
+export function fetchRecipes(): Promise<{ recipes: PromqlRecipe[] }> {
+  return authedJson<{ recipes: PromqlRecipe[] }>("/api/promql/recipes");
 }
