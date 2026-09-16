@@ -6,7 +6,8 @@ import { connectRoutes } from "./routes/connect.js";
 import { queryRoutes } from "./routes/query.js";
 import { streamRoutes } from "./routes/stream.js";
 import { getCircuitBreaker } from "./services/circuitBreaker.js";
-import { ensureSchema, healthcheck } from "./db/schema.js";
+import { healthcheck } from "./db/schema.js";
+import { bootstrapDatabase } from "./db/bootstrap.js";
 
 export interface BuildAppOptions {
   /** Skip DB-backed plugins (used by unit tests). */
@@ -63,9 +64,10 @@ export async function startServer(): Promise<void> {
   const env = getEnv();
   const app = await buildApp();
   try {
-    // Ensure the tenant/connection tables exist before accepting traffic.
-    await ensureSchema();
-    app.log.info("Database schema verified");
+    // Initialize/migrate the tenant & connection tables before accepting
+    // traffic (bounded retry to tolerate a still-starting PostgreSQL).
+    await bootstrapDatabase();
+    app.log.info("Database schema initialized");
   } catch (error) {
     app.log.error(error, "Database unreachable — check DATABASE_URL");
     await app.close();

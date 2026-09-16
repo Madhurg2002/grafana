@@ -7,7 +7,7 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Item | Status | Notes |
 | :--- | :--- | :--- |
 | AES-256-GCM token vault (`iv:authTag:ciphertext`, hex) | ✅ | `backend/src/db/encryption.ts`; key from `ENCRYPTION_KEY` (32-byte hex) |
-| PostgreSQL schema (tenants, prometheus_connections) | ✅ | `backend/src/db/schema.ts`; DDL + typed upsert/query helpers |
+| PostgreSQL schema (tenants, prometheus_connections) | ✅ | Versioned migrations in `backend/src/db/migrations/` (001 core tables, 002 indexes + `updated_at` trigger) applied by the checksum-verified, advisory-locked, transactional runner in `migrations/runner.ts`. |
 | PromQL normalizer (all 3 safety laws) | ✅ | Physical NIC filter, MemFree→MemAvailable, ≥[5m] rate windows; unit-tested |
 | `lru-cache` (300s TTL) query cache | ✅ | `backend/src/services/cache.ts` |
 | 3-state circuit breaker (5 fails/3000ms → 30s open → half-open probe) | ✅ | `backend/src/services/circuitBreaker.ts`; open-state fallback serves last-known value |
@@ -18,7 +18,7 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | HMAC-signed tenant auth (`middleware/auth.ts`) | 🔶 | Signing/verification implemented + helpers; routes currently accept `x-tenant-id`/body tenant without enforcing the token. Wire `requireTenant` into routes when multi-user auth is needed. |
 | Live PostgreSQL integration tests | ✅ (auto-skip) | `backend/tests/db.integration.test.ts` runs against any reachable `DATABASE_URL`/`TEST_DATABASE_URL` and **skips gracefully** (5 tests) when no DB is present, so `npm test` stays green. Verifies schema idempotency, tenant upsert, encrypted-token persistence, and conflict retention. |
 | Live Prometheus integration tests | ⏳ | Upstream calls mocked in Vitest per `vitest-monorepo-runner` skill. Normalizer verified directly. |
-| Auto-running `ensureSchema()` on boot | ✅ | `startServer()` now runs `ensureSchema()` and exits fast with a clear log if `DATABASE_URL` is unreachable. Unit tests bypass it via `buildApp({ skipDb })` / route mocks. |
+| Auto-running `ensureSchema()` on boot | ✅ | `startServer()` calls `bootstrapDatabase()` (bounded retries) which runs the migration runner; exits fast with a clear log if `DATABASE_URL` is unreachable. Standalone CLI: `npm run db:init` (safe to re-run / run alongside the server). |
 | `render.yaml` infra review | ⏳ | Spec written for Render (web + static + Postgres, generated secrets); needs account-side validation on first deploy. |
 
 ## Frontend
@@ -44,6 +44,17 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 
 ## Verification performed
 
-- `npm test` (root): backend 51/51 ✅ + frontend 12/12 ✅
+- `npm test` (root): backend 61 passed + 5 skipped (no live DB in sandbox) ✅ + frontend 12/12 ✅
 - `npm run typecheck`: backend + frontend clean, zero `any` ✅
 - `backend npm run build` → `dist/` ✅ · `frontend npm run build` → `dist/` ✅
+- `npm run db:init` verified to fail cleanly (clear error) when no DB is reachable ✅
+
+## DB initializer quick reference
+
+```bash
+npm run db:init        # apply pending migrations (idempotent, advisory-locked)
+```
+
+- Migrations live in `backend/src/db/migrations/index.ts` — **never edit an applied migration** (checksum verification aborts boot); append `003_*.sql`-style entries instead.
+- Applied versions are tracked in `schema_migrations (name, checksum, applied_at)`.
+- Concurrent server instances are serialized via `pg_advisory_lock`, so deploys with multiple replicas are safe.

@@ -68,14 +68,15 @@ CREATE TABLE IF NOT EXISTS prometheus_connections (
 `;
 
 export async function ensureSchema(client?: PoolClient): Promise<void> {
-  const executor = client ?? (await getPool().connect());
-  try {
-    await executor.query(SCHEMA_DDL);
-  } finally {
-    if (!client) {
-      executor.release();
-    }
+  // Delegates to the versioned migration runner (keeps legacy callers safe).
+  const { initializeDatabase } = await import("./migrations/runner.js");
+  const { MIGRATIONS } = await import("./migrations/index.js");
+  const pool = getPool();
+  if (client !== undefined) {
+    await initializeDatabase(pool, MIGRATIONS);
+    return;
   }
+  await initializeDatabase(pool, MIGRATIONS);
 }
 
 export async function upsertTenant(tenantId: string, name: string): Promise<TenantRow> {
