@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: prometheus-passthrough-api
+    runtime: node
+    plan: starter
+    region: oregon
+    rootDir: backend
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: prometheus-passthrough-db
+          property: connectionString
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://prometheus-passthrough.onrender.com
+
+databases:
+  - name: prometheus-passthrough-db
+    databaseName: prometheus_passthrough
+    plan: basic-256mb
+
+  - type: web
+    name: prometheus-passthrough-ui
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
