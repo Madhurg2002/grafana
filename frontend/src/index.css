@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 20% -10%, rgba(16, 185, 129, 0.06), transparent),
+    radial-gradient(900px 500px at 90% 110%, rgba(59, 130, 246, 0.06), transparent),
+    #09090b;
+  min-height: 100vh;
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-zinc-900/60 backdrop-blur-md border border-zinc-800/80 rounded-2xl;
+  }
+}

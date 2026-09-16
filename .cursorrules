@@ -1,0 +1,29 @@
+# AI Agent Rules — Prometheus Passthrough Monorepo
+
+## Stack
+- Backend: Fastify + TypeScript (strict, no `any`), Undici, lru-cache, PostgreSQL.
+- Frontend: React + Vite + Tailwind CSS + Recharts + Framer Motion + lucide-react.
+- Testing: Vitest (backend via `app.inject()`, frontend via React Testing Library).
+
+## Hard Rules
+1. Never use `any`. Define explicit interfaces / Zod schemas for all payloads and env vars.
+2. Never call Prometheus through Grafana. Target `/api/v1/query` and `/api/v1/query_range` directly.
+3. All Prometheus auth tokens MUST be encrypted with AES-256-GCM (`backend/src/db/encryption.ts`) before persistence. Never log plaintext tokens.
+4. Use async/await exclusively; wrap external HTTP calls in try/catch with circuit-breaker handling.
+
+## PromQL Safety Laws (backend/src/services/prometheus.ts)
+- ALWAYS inject `device=~"eth.*|ens.*|eno.*|bond.*"` on network metric queries.
+- NEVER emit `device!="lo"` without physical interface filtering.
+- ALWAYS use `node_memory_MemAvailable_bytes`; NEVER `node_memory_MemFree_bytes`.
+- `rate()` range vectors must be `[5m]` or larger.
+
+## Caching & Resilience
+- Cache query responses in `lru-cache` with a 300s TTL.
+- Circuit breaker: Closed → Open (5 consecutive failures or 3000ms timeout) → 30s Open with cached fallback → Half-Open single probe.
+
+## SSE
+- One poll per tenant every 5s; fan out one payload to all clients; clean up on `req.raw.on('close')`.
+
+## Style
+- Mobile-first dark UI: `bg-zinc-950` base, `bg-zinc-900/60 backdrop-blur-md` glass cards, emerald/amber/rose status glows.
+- Keep components small; extract shared UI only when it removes real duplication.
