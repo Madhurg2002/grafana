@@ -1,83 +1,60 @@
 # Agent Skills & Operational Capabilities (`SKILLS.md`)
 
-This document outlines the specialized tools, domain skills, and execution capabilities available to AI agents operating inside the Grafana Passthrough monorepo.
+This document outlines the specialized tools, domain skills, and execution capabilities available to AI agents operating inside the Prometheus Passthrough monorepo.
 
 ---
 
 ## 1. Skill: `promql-normalizer`
-
-- **Description:** Parses, scrubs, and normalizes PromQL queries prior to upstream proxy execution to prevent metric inflation and server strain.
+- **Description:** Parses, scrubs, and normalizes PromQL queries prior to upstream proxy execution.
 - **Execution Directives:**
-  - **Physical Network Scrubbing:** Inspect all network metric queries (such as `node_network_receive_bytes_total` and `node_network_transmit_bytes_total`). Inject regex filters matching physical/bonded interfaces only: `device=~"eth.*|ens.*|eno.*|bond.*"`. Strip or replace `device!="lo"`.
-  - **Memory Metric Standard:** Rewrite any occurrences of `node_memory_MemFree_bytes` to use `node_memory_MemAvailable_bytes`.
-  - **Rate Vector Range:** Check `rate(metric[window])` queries. If `window` is under `5m` (e.g., `1m`, `30s`), elevate it to `[5m]`.
+  - **Physical Network Scrubbing:** Inspect network queries (`node_network_receive_bytes_total`, `node_network_transmit_bytes_total`) and inject physical interface selectors: `device=~"eth.*|ens.*|eno.*|bond.*"`.
+  - **Memory Metric Standard:** Rewrite `node_memory_MemFree_bytes` to `node_memory_MemAvailable_bytes`.
+  - **Rate Vector Range:** Enforce a minimum `[5m]` range vector on all `rate()` functions.
 
 ---
 
 ## 2. Skill: `token-vault-crypto`
-
-- **Description:** Provides zero-leakage encryption and decryption for Grafana Service Account Tokens before database persistence.
+- **Description:** Provides zero-leakage AES-256-GCM encryption and decryption for authentication tokens.
 - **Execution Directives:**
-  - Use Node.js native `crypto` module with algorithm `aes-256-gcm`.
-  - Require a 32-byte secret key provided via `ENCRYPTION_SECRET`.
-  - Format encrypted tokens as `iv:authTag:encryptedData` (hex-encoded).
-  - Ensure raw tokens or decrypted strings are never printed to stdout, stderr, or system logs.
+  - Use Node.js native `crypto` with `aes-256-gcm`.
+  - Format output as `iv:authTag:ciphertext` (hex-encoded).
+  - Never print unencrypted tokens to logs.
 
 ---
 
 ## 3. Skill: `circuit-breaker-engine`
-
-- **Description:** Protects upstream Grafana instances by managing a three-state machine (Closed, Open, Half-Open) around all HTTP socket pools.
+- **Description:** Manages a 3-state machine (Closed, Open, Half-Open) around Prometheus HTTP client pools.
 - **Execution Directives:**
-  - **Trip Threshold (Closed $\rightarrow$ Open):** Trip the circuit breaker if 5 consecutive upstream requests fail or exceed a 3000ms timeout threshold.
-  - **Open State Behavior:** Immediately reject upstream calls for 30 seconds and return cached stale data or fallback state payload (`503 Service Unavailable`).
-  - **Half-Open Probe:** Execute 1 trial request after 30 seconds. On success, reset state to Closed; on failure, restart the 30-second Open timer.
+  - Trip to Open after 5 consecutive failures or 3000ms timeouts.
+  - Open state: Reject requests for 30s and serve cached fallback.
+  - Half-Open: Send 1 probe request after 30s to verify upstream recovery.
 
 ---
 
 ## 4. Skill: `sse-fanout-broadcaster`
-
-- **Description:** Manages the low-overhead single-poll multi-client real-time stream engine in Fastify.
+- **Description:** Manages single-poll multi-client real-time streaming over Fastify SSE.
 - **Execution Directives:**
-  - Maintain an active in-memory connection map of client SSE response streams keyed by `tenantId`.
-  - Execute exactly **one** backend health-check query every 5 seconds per active `tenantId`.
-  - Broadcast the single result payload simultaneously to all connected client streams attached to that `tenantId`.
-  - Automatically clean up connection references on client socket close (`req.raw.on('close')`).
+  - Maintain active SSE connections keyed by `tenantId`.
+  - Execute 1 backend health-check query every 5 seconds per tenant.
+  - Broadcast single payload simultaneously to all tenant clients.
+  - Clean up client references on socket close (`req.raw.on('close')`).
 
 ---
 
-## 5. Skill: `grafana-schema-parser`
-
-- **Description:** Transforms raw Grafana dashboard JSON models (`/api/dashboards/uid/:uid`) into clean mobile UI component contracts.
+## 5. Skill: `frontend-ui-designer`
+- **Description:** Builds mobile-first dark obsidian monitoring UIs.
 - **Execution Directives:**
-  - Extract panel `title`, `type` (`singlestat`, `stat`, `gauge`, `timeseries`), and `targets` (PromQL queries).
-  - Filter out unsupported layout panels (text blocks, row headers, legacy plugins).
-  - Map extracted panels to frontend visual targets:
-    - `stat` / `singlestat` $\rightarrow$ `<StatusCard />`
-    - `gauge` $\rightarrow$ `<GaugeCard />`
-    - `timeseries` $\rightarrow$ `<SparkLineCard />`
+  - Apply `bg-zinc-950` background with `bg-zinc-900/60 backdrop-blur-md` glassmorphic cards.
+  - Render percentage metrics in `<GaugeCard />` using Recharts.
+  - Render time-series trends in `<SparkLineCard />` using Recharts area charts with gradient fills.
+  - Connect `<HealthBadge />` directly to `useSSE` hook status.
 
 ---
 
 ## 6. Skill: `vitest-monorepo-runner`
-
-- **Description:** Executes and validates automated test suites across workspace boundaries.
+- **Description:** Executes automated tests across backend and frontend workspaces.
 - **Execution Directives:**
-  - Run backend route integration tests using Fastify `app.inject()`.
-  - Mock external Undici calls to Grafana endpoints and Upstash/Redis caching layers using Vitest spies.
-  - Execute frontend component rendering tests via React Testing Library.
-  - Ensure 100% test pass rate upon running `npm test`.
-
-  ***
-
-## 7. Skill: `frontend-ui-designer`
-
-- **Description:** Constructs mobile-first, dark-themed React monitoring interfaces using Tailwind CSS, Recharts, Framer Motion, and Lucide icons.
-- **Execution Directives:**
-  - **Design System:** Apply dark obsidian styling (`bg-zinc-950` root, `bg-zinc-900/60` glassmorphic cards with `backdrop-blur-md` and `border-zinc-800`).
-  - **Component Mapping:**
-    - Map single-stat metrics to `<StatusCard />` with dynamic status glows (`emerald`, `amber`, `rose`).
-    - Map percentage gauges (CPU/RAM) to `<GaugeCard />` using Recharts semi-circle or SVG ring meters.
-    - Map time-series trends (bandwidth) to `<SparkLineCard />` using `<AreaChart>` with gradient opacity fills.
-  - **Real-time UX:** Wire `<HealthBadge />` directly to `useSSE` hook state to indicate live stream status (`Live`, `Connecting`, `Disconnected`).
-  - **Security Constraint:** Never call Grafana APIs directly from frontend components—route all data fetching strictly through Fastify proxy hooks (`useDashboard`, `lib/api.ts`).
+  - Test Fastify routes via `app.inject()`.
+  - Mock external Undici calls to Prometheus via Vitest spies.
+  - Test React components via React Testing Library.
+  - Verify 100% pass rate on `npm test`.

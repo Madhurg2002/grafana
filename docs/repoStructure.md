@@ -1,56 +1,63 @@
-grafana-passthrough/
+prometheus-passthrough/
 ├── .cursorrules                        # Context & rules for AI IDE extensions
+├── .env.example                        # Environment variable template
+├── .gitignore                          # Git ignore rules
 ├── AGENTS.md                           # Strict guidelines & coding standards for AI agents
-├── README.md                           # Developer setup & quickstart guide
+├── Exec.md                             # Product spec & implementation plan
 ├── package.json                        # Root npm workspace configuration
+├── README.md                           # Developer setup & quickstart guide
 ├── render.yaml                         # Production deployment specification
 │
-├── docs/                               # Architectural Decision Records (ADRs) & Research
+├── docs/                               # Architectural Decision Records & Specifications
 │   ├── research.md                     # Deep-dive on design choices, bottlenecks, & trade-offs
-│   ├── adr-001-caching-strategy.md     # Rationale for 5-min TTL & SSE bypass
-│   └── adr-002-grafana-protection.md  # Rationale for circuit breaker & connection pool
+│   ├── repoStructure.md               # Repository file layout map
+│   └── skills.md                       # Agent skills & capabilities reference
 │
 ├── backend/                            # Fastify Proxy Server
 │   ├── package.json
 │   ├── tsconfig.json
-│   └── src/
-│       ├── index.ts                    # Fastify server entry point
-│       ├── config/
-│       │   └── env.ts                  # Environment schema validation (Zod/TypeBox)
-│       ├── db/
-│       │   ├── schema.ts               # User, Tenant, & Grafana Connection schema
-│       │   └── encryption.ts           # AES-256-GCM encryption helpers
-│       ├── middleware/
-│       │   ├── auth.ts                 # JWT / Session authentication
-│       │   └── rateLimit.ts            # Rate limiting configuration
-│       ├── routes/
-│       │   ├── auth.ts                 # POST /api/auth (Login / Register)
-│       │   ├── connect.ts              # POST /api/connect (Validate URI + Token)
-│       │   ├── dashboard.ts            # GET /api/dashboards/:uid
-│       │   ├── query.ts                # POST /api/ds/query
-│       │   └── stream.ts               # GET /api/stream (SSE Broadcast)
-│       └── services/
-│           ├── cache.ts                # Cache-aside wrapper with fallback
-│           ├── circuitBreaker.ts       # Throughput protection & state machine
-│           ├── grafana.ts              # Undici HTTP client & Grafana REST proxy
-│           └── sse.ts                  # Multi-client fan-out manager
+│   ├── src/
+│   │   ├── index.ts                    # Fastify server entry point
+│   │   ├── config/
+│   │   │   └── env.ts                  # Environment schema validation (Zod/TypeBox)
+│   │   ├── db/
+│   │   │   ├── schema.ts               # User, Tenant, & Prometheus Connection schema
+│   │   │   └── encryption.ts           # AES-256-GCM encryption helpers
+│   │   ├── middleware/
+│   │   │   ├── auth.ts                 # JWT / Session authentication
+│   │   │   └── rateLimit.ts            # Rate limiting configuration
+│   │   ├── routes/
+│   │   │   ├── connect.ts              # POST /api/connect (Validate URI + Token)
+│   │   │   ├── query.ts                # POST /api/query & POST /api/query_range
+│   │   │   └── stream.ts               # GET /api/stream (SSE Broadcast)
+│   │   └── services/
+│   │       ├── cache.ts                # In-memory LRU cache wrapper
+│   │       ├── circuitBreaker.ts       # Circuit breaker state machine
+│   │       ├── prometheus.ts           # Undici client & PromQL normalizer
+│   │       └── sse.ts                  # Multi-client fan-out manager
+│   └── tests/
+│       ├── encryption.test.ts
+│       ├── promql.test.ts
+│       └── routes.test.ts
 │
 └── frontend/                           # React + Vite + Tailwind Client
     ├── package.json
     ├── vite.config.ts
     ├── tailwind.config.js
-    └── src/
-        ├── main.tsx
-        ├── App.tsx
-        ├── components/
-        │   ├── ConnectForm.tsx         # URI & Token onboarding form
-        │   ├── DashboardView.tsx       # Grid renderer for panels
-        │   ├── GaugeCard.tsx           # Single-stat gauge renderer
-        │   ├── HealthBadge.tsx         # Real-time SSE status pill
-        │   ├── SparkLineCard.tsx       # Minimalist time-series chart
-        │   └── StatusCard.tsx          # Large KPI card
-        ├── hooks/
-        │   ├── useDashboard.ts         # Dashboard metadata & panel query fetcher
-        │   └── useSSE.ts               # SSE stream consumer hook
-        └── lib/
-            └── api.ts                  # Axios/Fetch client wrapper
+    ├── src/
+    │   ├── main.tsx
+    │   ├── App.tsx
+    │   ├── components/
+    │   │   ├── ConnectForm.tsx         # Prometheus URI & Token onboarding form
+    │   │   ├── DashboardView.tsx       # Grid renderer for panels
+    │   │   ├── GaugeCard.tsx           # Recharts semi-circle percentage gauge
+    │   │   ├── HealthBadge.tsx         # Real-time SSE status pill
+    │   │   ├── SparkLineCard.tsx       # Recharts metric area chart
+    │   │   └── StatusCard.tsx          # Single-stat KPI card
+    │   ├── hooks/
+    │   │   ├── useDashboard.ts         # Query fetcher hook
+    │   │   └── useSSE.ts               # SSE stream consumer hook
+    │   └── lib/
+    │       └── api.ts                  # Fetch API wrapper
+    └── tests/
+        └── components.test.tsx
