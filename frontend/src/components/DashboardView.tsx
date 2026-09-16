@@ -28,7 +28,14 @@ function latestScalar(
   return first.value?.value ?? null;
 }
 
-export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
+export function DashboardView({
+  tenantId,
+  embedded = false,
+}: {
+  tenantId: string;
+  /** When true, the parent chrome already brands the page — render a slim toolbar instead of a full header. */
+  embedded?: boolean;
+}): JSX.Element {
   const { status } = useSSE(tenantId);
   const { token } = useAuth();
   const [activeLabel, setActiveLabel] = useState<string>("default");
@@ -54,12 +61,23 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+      <header
+        className={`sticky z-10 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md ${
+          embedded ? "top-12" : "top-0"
+        }`}
+      >
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 sm:px-6">
           <div className="flex items-center gap-2">
-            <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
-            <span className="text-sm font-semibold tracking-tight">Passthrough</span>
-            <span className="hidden text-xs text-zinc-500 sm:inline">
+            {embedded ? null : (
+              <>
+                <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
+                <span className="text-sm font-semibold tracking-tight">Passthrough</span>
+              </>
+            )}
+            <span
+              className="hidden max-w-72 truncate text-xs text-zinc-500 sm:inline"
+              title={`tenant: ${tenantId} · connection: ${activeLabel}`}
+            >
               tenant: {tenantId} · {activeLabel}
             </span>
           </div>
@@ -122,8 +140,16 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
         </section>
 
         {hostsUp.data !== null && hostsUp.data.result.length > 0 ? (
-          <section className="mt-6 overflow-hidden rounded-xl border border-zinc-800/80" data-testid="hosts-table">
-            <table className="w-full text-left text-xs">
+          <section className="mt-6" data-testid="hosts-table">
+            <h2 className="mb-2 text-sm font-semibold text-zinc-300">
+              Scrape targets
+              <span className="ml-2 text-xs font-normal text-zinc-500">
+                every endpoint your Prometheus watches — up means it responded
+                to the last scrape
+              </span>
+            </h2>
+            <div className="overflow-hidden rounded-xl border border-zinc-800/80">
+              <table className="w-full text-left text-xs">
               <thead className="bg-zinc-900/70 text-zinc-400">
                 <tr>
                   <th className="px-4 py-2 font-medium">Instance</th>
@@ -143,12 +169,28 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
                       key={`${item.metric?.job ?? "?"}/${item.metric?.instance ?? "?"}`}
                       className="border-t border-zinc-800/60"
                     >
-                      <td className="px-4 py-2 font-mono text-zinc-200">
-                        {item.metric?.instance ?? "unknown"}
+                      <td className="max-w-64 truncate px-4 py-2 font-mono text-zinc-200">
+                        <span
+                          title={item.metric?.instance ?? "unknown"}
+                          className="block truncate"
+                        >
+                          {item.metric?.instance ?? "unknown"}
+                        </span>
                       </td>
-                      <td className="px-4 py-2 text-zinc-400">{item.metric?.job ?? "unknown"}</td>
+                      <td className="px-4 py-2 text-zinc-400">
+                        <span title={item.metric?.job ?? "unknown"} className="block truncate">
+                          {item.metric?.job ?? "unknown"}
+                        </span>
+                      </td>
                       <td className="px-4 py-2">
-                        <span className={up === 1 ? "text-emerald-300" : "text-rose-300"}>
+                        <span
+                          className={up === 1 ? "text-emerald-300" : "text-rose-300"}
+                          title={
+                            up === 1
+                              ? "Last scrape succeeded"
+                              : "Last scrape failed or timed out"
+                          }
+                        >
                           {up === 1 ? "up" : "down"}
                         </span>
                       </td>
@@ -157,6 +199,7 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
                 })}
               </tbody>
             </table>
+            </div>
           </section>
         ) : null}
 
