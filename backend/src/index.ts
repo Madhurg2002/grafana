@@ -6,7 +6,7 @@ import { connectRoutes } from "./routes/connect.js";
 import { queryRoutes } from "./routes/query.js";
 import { streamRoutes } from "./routes/stream.js";
 import { getCircuitBreaker } from "./services/circuitBreaker.js";
-import { healthcheck } from "./db/schema.js";
+import { ensureSchema, healthcheck } from "./db/schema.js";
 
 export interface BuildAppOptions {
   /** Skip DB-backed plugins (used by unit tests). */
@@ -62,6 +62,15 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 export async function startServer(): Promise<void> {
   const env = getEnv();
   const app = await buildApp();
+  try {
+    // Ensure the tenant/connection tables exist before accepting traffic.
+    await ensureSchema();
+    app.log.info("Database schema verified");
+  } catch (error) {
+    app.log.error(error, "Database unreachable — check DATABASE_URL");
+    await app.close();
+    process.exit(1);
+  }
   try {
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Backend listening on :${env.PORT}`);

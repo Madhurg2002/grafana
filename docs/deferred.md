@@ -16,9 +16,9 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Undici client with breaker + bearer auth from encrypted token | ✅ | `backend/src/services/prometheus.ts` |
 | Env validation (zod, fail-fast) | ✅ | `backend/src/config/env.ts` |
 | HMAC-signed tenant auth (`middleware/auth.ts`) | 🔶 | Signing/verification implemented + helpers; routes currently accept `x-tenant-id`/body tenant without enforcing the token. Wire `requireTenant` into routes when multi-user auth is needed. |
-| Live PostgreSQL integration tests | ⏳ | Route/service tests mock `db/schema.js` (no Postgres service in CI sandbox). `ensureSchema`/pool helpers are ready for a dockerized `npm run test:integration`. |
+| Live PostgreSQL integration tests | ✅ (auto-skip) | `backend/tests/db.integration.test.ts` runs against any reachable `DATABASE_URL`/`TEST_DATABASE_URL` and **skips gracefully** (5 tests) when no DB is present, so `npm test` stays green. Verifies schema idempotency, tenant upsert, encrypted-token persistence, and conflict retention. |
 | Live Prometheus integration tests | ⏳ | Upstream calls mocked in Vitest per `vitest-monorepo-runner` skill. Normalizer verified directly. |
-| Auto-running `ensureSchema()` on boot | ⏳ | Kept explicit (`ensureSchema()` exported); call it in `startServer()` once a real DB is provisioned to avoid surprise DDL in tests. |
+| Auto-running `ensureSchema()` on boot | ✅ | `startServer()` now runs `ensureSchema()` and exits fast with a clear log if `DATABASE_URL` is unreachable. Unit tests bypass it via `buildApp({ skipDb })` / route mocks. |
 | `render.yaml` infra review | ⏳ | Spec written for Render (web + static + Postgres, generated secrets); needs account-side validation on first deploy. |
 
 ## Frontend
