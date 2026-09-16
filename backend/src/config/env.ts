@@ -8,12 +8,34 @@ const hex64 = z
   .string()
   .regex(/^[0-9a-fA-F]{64}$/, "must be a 64-character hex string (32 bytes)");
 
+/**
+ * Accepts a comma-separated list of allowed origins. Values may be bare
+ * hostnames (`grafana-helper.vercel.app`) or full origins
+ * (`https://grafana-helper.vercel.app`) — bare hostnames are normalized to
+ * https so the browser-side `Access-Control-Allow-Origin` check always
+ * receives a valid origin. `*` allows everything (dev only).
+ */
+const corsOriginSchema = z
+  .string()
+  .transform((value) =>
+    value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0)
+      .map((entry) =>
+        entry === "*" || entry.startsWith("http://") || entry.startsWith("https://")
+          ? entry
+          : `https://${entry}`
+      )
+      .join(",")
+  );
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   NODE_ENV: z
     .enum(["development", "test", "production"])
     .default("development"),
-  CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  CORS_ORIGIN: corsOriginSchema.default("http://localhost:5173"),
   LOG_LEVEL: z
     .enum(["fatal", "error", "warn", "info", "debug", "trace"])
     .default("info"),

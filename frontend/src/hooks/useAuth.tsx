@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { getToken, setToken, type AuthUser } from "../lib/api";
+import { apiBase, getToken, setToken, type AuthUser } from "../lib/api";
 
 /**
  * Client-side session state. The backend verifies every request via the
@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
         return;
       }
       try {
-        const response = await fetch("/api/auth/me", {
+        const response = await fetch(`${apiBase()}/api/auth/me`, {
           headers: { authorization: `Bearer ${current}` },
         });
         if (!response.ok) {

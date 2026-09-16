@@ -23,8 +23,18 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     disableRequestLogging: env.NODE_ENV === "test",
   });
 
+  // CORS_ORIGIN is a comma-separated allow-list (bare hostnames normalized
+  // to https by the env schema). Multiple Vercel preview URLs can be listed.
+  const allowedOrigins = env.CORS_ORIGIN.split(",").map((o) => o.trim());
   await app.register(cors, {
-    origin: env.CORS_ORIGIN,
+    origin: (origin, cb) => {
+      // Non-browser tools (curl, healthchecks) send no Origin — allow.
+      if (origin === undefined || allowedOrigins.includes("*")) {
+        cb(null, true);
+        return;
+      }
+      cb(null, allowedOrigins.includes(origin));
+    },
     credentials: true,
   });
   await registerRateLimit(app);
