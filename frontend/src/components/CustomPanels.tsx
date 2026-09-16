@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LayoutDashboard, Plus, Trash2 } from "lucide-react";
+import { GripVertical, LayoutDashboard, Plus, Table2, Trash2 } from "lucide-react";
 import { GaugeCard } from "./GaugeCard";
 import { SparkLineCard } from "./SparkLineCard";
 import { StatusCard } from "./StatusCard";
 import { PromqlHelper } from "./PromqlHelper";
+import { MetricBrowser } from "./MetricBrowser";
 import { useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
 import {
   createPanel,
   deletePanel,
   listPanels,
+  reorderPanel,
   type DashboardPanel,
   type PanelKind,
 } from "../lib/api";
@@ -84,6 +86,8 @@ function formatValue(value: number): string {
 export function CustomPanels({ tenantId }: Props): JSX.Element | null {
   const promqlRef = useRef<HTMLTextAreaElement | null>(null);
   const [panels, setPanels] = useState<DashboardPanel[]>([]);
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
   const [promql, setPromql] = useState("");
@@ -95,7 +99,7 @@ export function CustomPanels({ tenantId }: Props): JSX.Element | null {
   const refresh = useCallback(async (): Promise<void> => {
     try {
       const payload = (await listPanels(tenantId)) as { panels?: DashboardPanel[] };
-      setPanels(payload.panels ?? []);
+      setPanels([...(payload.panels ?? [])].sort((a, b) => a.position - b.position));
     } catch {
       // Signed-out users have no persisted panels — section simply hides.
     }
@@ -137,6 +141,29 @@ export function CustomPanels({ tenantId }: Props): JSX.Element | null {
       setError(err instanceof Error ? err.message : "Failed to delete panel");
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Reorder locally, then persist the new positions server-side. */
+  async function handleReorder(from: number, to: number): Promise<void> {
+    if (from === to) {
+      return;
+    }
+    const next = [...panels];
+    const [moved] = next.splice(from, 1);
+    if (moved === undefined) {
+      return;
+    }
+    next.splice(to, 0, moved);
+    setPanels(next);
+    try {
+      await Promise.all(
+        next.map((panel, position) => reorderPanel(tenantId, panel.id, position))
+      );
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save order");
+      await refresh();
     }
   }
 
@@ -226,8 +253,16 @@ export function CustomPanels({ tenantId }: Props): JSX.Element | null {
               rows={2}
               className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
             />
-            <div className="mt-1">
+            <div className="mt-1 flex items-center gap-3">
               <PromqlHelper tenantId={tenantId} value={promql} onChange={setPromql} />
+              <button
+                type="button"
+                className="flex items-center gap-1 text-[11px] text-zinc-500 transition hover:text-emerald-300"
+                onClick={() => setBrowserOpen(true)}
+              >
+                <Table2 className="h-3 w-3" aria-hidden />
+                Browse metrics
+              </button>
             </div>
           </div>
           {error !== null ? (
@@ -260,9 +295,34 @@ export function CustomPanels({ tenantId }: Props): JSX.Element | null {
         </div>
       ) : null}
 
-      <div className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div
+        className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3"
+        data-testid="panel-grid"
+      >
         {panels.map((panel, index) => (
-          <div key={panel.id} className="group relative">
+          <div
+            key={panel.id}
+            className={`group relative transition-opacity ${
+              dragIndex === index ? "opacity-40" : ""
+            }`}
+            draggable
+            onDragStart={() => setDragIndex(index)}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (dragIndex !== null) {
+                void handleReorder(dragIndex, index);
+              }
+              setDragIndex(null);
+            }}
+            onDragEnd={() => setDragIndex(null)}
+          >
+            <span
+              className="absolute -left-1 top-2 cursor-grab rounded p-0.5 text-zinc-700 opacity-0 transition group-hover:opacity-100 active:cursor-grabbing"
+              aria-hidden
+            >
+              <GripVertical className="h-3.5 w-3.5" />
+            </span>
             <LivePanel panel={panel} index={index} />
             <button
               type="button"
@@ -278,6 +338,18 @@ export function CustomPanels({ tenantId }: Props): JSX.Element | null {
           </div>
         ))}
       </div>
+
+      {browserOpen ? (
+        <MetricBrowser
+          tenantId={tenantId}
+          onInsert={(promql) => {
+            setPromql(promql);
+            setBrowserOpen(false);
+            setAdding(true);
+          }}
+          onClose={() => setBrowserOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -266,6 +266,42 @@ export async function deletePanel(tenantId: string, panelId: number): Promise<bo
   return (result.rowCount ?? 0) > 0;
 }
 
+export interface PanelPosition {
+  id: number;
+  position: number;
+}
+
+/** Persists new panel positions (tenant-scoped so IDs can't cross tenants). */
+export async function reorderPanels(
+  tenantId: string,
+  positions: PanelPosition[]
+): Promise<boolean> {
+  if (positions.length === 0) {
+    return true;
+  }
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    for (const { id, position } of positions) {
+      const result = await client.query(
+        "UPDATE dashboard_panels SET position = $1 WHERE id = $2 AND tenant_id = $3",
+        [position, id, tenantId]
+      );
+      if ((result.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+    }
+    await client.query("COMMIT");
+    return true;
+  } catch {
+    await client.query("ROLLBACK");
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
 export async function healthcheck(): Promise<boolean> {
   const result = await getPool().query<QueryResultRow>("SELECT 1 AS ok");
   return result.rowCount === 1;

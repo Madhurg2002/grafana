@@ -404,6 +404,76 @@ export async function fetchLabelValues(
   }
 }
 
+export interface MetricSeriesLabels {
+  labels: Record<string, string>;
+}
+
+/**
+ * `/api/v1/series?match[]={metric}` — the label sets ("columns") a metric
+ * exposes. Powers the metric browser in the panel builder.
+ */
+export async function fetchMetricSeries(
+  tenantId: string,
+  metric: string,
+  limit = 20
+): Promise<{ metric: string; series: Array<Record<string, string>>; cached: boolean }> {
+  const clean = metric.replace(/[^a-zA-Z0-9_:]/g, "").slice(0, 200);
+  if (clean.length === 0) {
+    throw new PrometheusClientError("Invalid metric name", 400);
+  }
+  const cache = getQueryCache();
+  const cacheKey = `series:${tenantId}:${clean}`;
+  const cached = cache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached.value as { metric: string; series: Array<Record<string, string>>; cached: boolean };
+  }
+  const upstream = await resolveTenantUpstream(tenantId);
+  const breaker = getCircuitBreaker();
+  try {
+    const series = await breaker.execute(async () => {
+      const headers: Record<string, string> = { accept: "application/json" };
+      if (upstream.authHeader !== null) {
+        headers.authorization = upstream.authHeader;
+      }
+      const params = new URLSearchParams({
+        "match[]": `{__name__="${clean}"}`,
+        limit: String(Math.min(Math.max(limit, 1), 100)),
+      });
+      const response = await request(`${upstream.baseUrl}/api/v1/series`, {
+        method: "GET",
+        headers,
+        query: Object.fromEntries(params.entries()),
+        bodyTimeout: 5000,
+        headersTimeout: 5000,
+      });
+      if (response.statusCode >= 400) {
+        await response.body.dump();
+        throw new PrometheusClientError(
+          `Prometheus responded with ${response.statusCode}`,
+          response.statusCode
+        );
+      }
+      const body = (await response.body.json()) as {
+        status?: string;
+        data?: Array<Record<string, string>>;
+      };
+      if (body.status !== "success" || !Array.isArray(body.data)) {
+        throw new PrometheusClientError("Unexpected series response", 502);
+      }
+      return body.data;
+    });
+    const result = { metric: clean, series, cached: false };
+    cache.set(cacheKey, result);
+    return result;
+  } catch (error) {
+    if (error instanceof CircuitOpenError || error instanceof PrometheusClientError) {
+      throw error;
+    }
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new PrometheusClientError(`Series request failed — ${message}`);
+  }
+}
+
 export interface MetricNamesResult {
   names: string[];
   cached: boolean;

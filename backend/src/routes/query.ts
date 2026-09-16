@@ -6,6 +6,7 @@ import {
   rangeQuery,
   fetchMetricNames,
   fetchLabelValues,
+  fetchMetricSeries,
   PrometheusClientError,
   type PromQueryResult,
 } from "../services/prometheus.js";
@@ -242,4 +243,74 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
   app.get("/api/promql/recipes", async (_request, reply) => {
     return reply.code(200).send({ recipes: PROMQL_RECIPES });
   });
+
+  /**
+   * GET /api/promql/recipes/:tenantId — recipes filtered to what this
+   * upstream ACTUALLY has (plus generic templates). Each recipe carries the
+   * metrics it needs; unavailable ones are flagged so the UI can hide them.
+   */
+  app.get<{ Params: { tenantId: string } }>(
+    "/api/promql/recipes/:tenantId",
+    async (request, reply) => {
+      const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+      if (!tenantId.success) {
+        return reply.code(400).send({ error: "Invalid tenantId" });
+      }
+      try {
+        const { names } = await fetchMetricNames(tenantId.data);
+        const available = new Set(names);
+        const catalog = PROMQL_RECIPES.map((recipe) => {
+          const needed = recipe.promql.match(/[a-zA-Z_:][a-zA-Z0-9_:]*(?=\s*[({])/g) ?? [];
+          const missing = needed.filter((m) => !available.has(m));
+          return {
+            ...recipe,
+            available: missing.length === 0,
+            missingMetrics: [...new Set(missing)],
+          };
+        });
+        // Auto-generated recipes: any _total counter on this upstream becomes
+        // a ready-made rate() panel.
+        const autoCounters = names
+          .filter((n) => n.endsWith("_total") && !n.startsWith("node_") && !n.startsWith("process_") && !n.startsWith("http_") && !n.startsWith("go_"))
+          .slice(0, 10);
+        const auto = autoCounters.map((counter) => ({
+          title: `Rate of ${counter}`,
+          promql: `sum(rate(${counter}[5m]))`,
+          kind: "sparkline",
+          unit: "op/s",
+          available: true,
+          missingMetrics: [] as string[],
+        }));
+        return reply.code(200).send({ recipes: [...catalog, ...auto] });
+      } catch (error) {
+        const { code, message } = upstreamErrorReply(error);
+        return reply.code(code).send({ error: message });
+      }
+    }
+  );
+
+  /**
+   * GET /api/promql/series/:tenantId/:metric — label sets ("columns") the
+   * metric exposes, for the table-style metric browser.
+   */
+  app.get<{ Params: { tenantId: string; metric: string } }>(
+    "/api/promql/series/:tenantId/:metric",
+    async (request, reply) => {
+      const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+      const metric = z
+        .string()
+        .regex(/^[a-zA-Z0-9_:]{1,200}$/)
+        .safeParse(request.params.metric);
+      if (!tenantId.success || !metric.success) {
+        return reply.code(400).send({ error: "Invalid tenantId or metric" });
+      }
+      try {
+        const result = await fetchMetricSeries(tenantId.data, metric.data);
+        return reply.code(200).send(result);
+      } catch (error) {
+        const { code, message } = upstreamErrorReply(error);
+        return reply.code(code).send({ error: message });
+      }
+    }
+  );
 }
