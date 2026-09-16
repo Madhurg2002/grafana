@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Radio } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuthForm } from "./components/AuthForm";
@@ -6,6 +6,7 @@ import { ConnectForm } from "./components/ConnectForm";
 import { DashboardView } from "./components/DashboardView";
 import { ShareView } from "./components/ShareView";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
+import { fetchConnectionInfo, type ConnectionInfo } from "./lib/api";
 
 type Route =
   | { name: "home" }
@@ -33,11 +34,39 @@ function parseRoute(): Route {
 
 function SignedInApp(): JSX.Element {
   const { user, logout } = useAuth();
+  const [connection, setConnection] = useState<ConnectionInfo | null>(null);
+  const [connectionChecked, setConnectionChecked] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function check(): Promise<void> {
+      if (user === null) {
+        setConnectionChecked(true);
+        return;
+      }
+      try {
+        const info = await fetchConnectionInfo(user.tenantId);
+        if (!cancelled) setConnection(info);
+      } catch {
+        // 404 = never connected — show the connect panel.
+        if (!cancelled) setConnection(null);
+      } finally {
+        if (!cancelled) setConnectionChecked(true);
+      }
+    }
+    void check();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   function navigate(path: string): void {
     window.history.pushState(null, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
+
+  const tenantId = user?.tenantId ?? "default";
+  const connected = connection !== null && connection.status === "connected";
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -66,7 +95,31 @@ function SignedInApp(): JSX.Element {
         </div>
       </header>
       <main className="flex flex-1 flex-col">
-        <DashboardView tenantId={user?.tenantId ?? "default"} />
+        {connectionChecked && !connected ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
+            <h1 className="text-lg font-semibold tracking-tight">
+              Connect your monitoring stack
+            </h1>
+            <p className="max-w-md text-center text-sm text-zinc-400">
+              Paste your Prometheus URL — or a Grafana URL with a service-account
+              token — and we handle the rest.
+            </p>
+            <ConnectForm
+              onConnected={() => {
+                void (async () => {
+                  try {
+                    setConnection(await fetchConnectionInfo(tenantId));
+                  } catch {
+                    setConnection(null);
+                  }
+                })();
+              }}
+              fixedTenantId={tenantId}
+            />
+          </div>
+        ) : (
+          <DashboardView tenantId={tenantId} />
+        )}
       </main>
     </div>
   );

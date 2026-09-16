@@ -5,10 +5,12 @@ import { connectTenant, type ConnectResponse } from "../lib/api";
 
 export interface ConnectFormProps {
   onConnected: (tenantId: string) => void;
+  /** When set (signed-in users), the tenant is fixed and hidden from the form. */
+  fixedTenantId?: string;
 }
 
-export function ConnectForm({ onConnected }: ConnectFormProps): JSX.Element {
-  const [tenantId, setTenantId] = useState("");
+export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): JSX.Element {
+  const [tenantId, setTenantId] = useState(fixedTenantId ?? "");
   const [prometheusUrl, setPrometheusUrl] = useState("");
   const [authToken, setAuthToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -54,20 +56,22 @@ export function ConnectForm({ onConnected }: ConnectFormProps): JSX.Element {
       </div>
 
       <div className="mt-5 space-y-4">
-        <div>
-          <label htmlFor="tenantId" className="mb-1 block text-xs text-zinc-400">
-            Tenant ID
-          </label>
-          <input
-            id="tenantId"
-            className={inputClass}
-            value={tenantId}
-            onChange={(e) => setTenantId(e.target.value)}
-            placeholder="my-team"
-            required
-            minLength={1}
-          />
-        </div>
+        {fixedTenantId === undefined ? (
+          <div>
+            <label htmlFor="tenantId" className="mb-1 block text-xs text-zinc-400">
+              Tenant ID
+            </label>
+            <input
+              id="tenantId"
+              className={inputClass}
+              value={tenantId}
+              onChange={(e) => setTenantId(e.target.value)}
+              placeholder="my-team"
+              required
+              minLength={1}
+            />
+          </div>
+        ) : null}
         <div>
           <label htmlFor="prometheusUrl" className="mb-1 block text-xs text-zinc-400">
             Prometheus or Grafana URL <span className="text-zinc-600">(auto-detected)</span>
