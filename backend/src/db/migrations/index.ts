@@ -3,6 +3,7 @@ import { M003 } from "./003-users.js";
 import { M004 } from "./004-upstream-type.js";
 import { M005 } from "./005-multi-connection-panels.js";
 import { M006 } from "./006-share-access.js";
+import { M007 } from "./007-dashboard-pages.js";
 
 /**
  * Ordered, immutable migrations. Once applied, a migration's SQL MUST NOT be
@@ -64,4 +65,5 @@ export const MIGRATIONS: Migration[] = [
   M004,
   M005,
   M006,
+  M007,
 ];

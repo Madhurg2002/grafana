@@ -102,7 +102,14 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
     }
     const parsed = createSchema.safeParse(request.body);
     if (!parsed.success) {
-      return reply.code(400).send({ error: "Invalid request body" });
+      // Field-level detail so bad payloads are diagnosable from the client.
+      return reply.code(400).send({
+        error: "Invalid request body",
+        details: parsed.error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message,
+        })),
+      });
     }
     const { tenantId, label, access, allowedEmails, invite } = parsed.data;
     const owned = await tenantOwnedBy(tenantId, user.sub);

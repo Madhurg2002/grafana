@@ -12,6 +12,10 @@ import {
   createPanel,
   deletePanel,
   reorderPanels,
+  listPages,
+  createPage,
+  deletePage,
+  renamePage,
 } from "../db/schema.js";
 import { normalizePromQL } from "../services/prometheus.js";
 import { getEnv } from "../config/env.js";
@@ -253,13 +257,24 @@ app.delete<{ Params: { tenantId: string; id: string } }>(
 // Custom dashboard panels (user-defined views)
 // ---------------------------------------------------------------------------
 
-/** GET /api/panels/:tenantId — ordered list of the tenant's custom panels. */
-app.get<{ Params: { tenantId: string } }>("/api/panels/:tenantId", async (request, reply) => {
+/** GET /api/panels/:tenantId?pageId= — panels, optionally scoped to a page. */
+app.get<{ Params: { tenantId: string }; Querystring: { pageId?: string } }>(
+  "/api/panels/:tenantId",
+  async (request, reply) => {
   const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
   if (!tenantId.success) {
     return reply.code(400).send({ error: "Invalid tenantId" });
   }
-  const panels = await listPanels(tenantId.data);
+  const pageIdRaw = request.query.pageId;
+  let pageId: number | undefined;
+  if (pageIdRaw !== undefined && pageIdRaw !== "") {
+    const parsedPage = z.coerce.number().int().positive().safeParse(pageIdRaw);
+    if (!parsedPage.success) {
+      return reply.code(400).send({ error: "Invalid pageId" });
+    }
+    pageId = parsedPage.data;
+  }
+  const panels = await listPanels(tenantId.data, pageId);
   return reply.code(200).send({ panels });
 });
 
@@ -283,12 +298,19 @@ app.post<{ Params: { tenantId: string }; Body: unknown }>(
     }
     // Store the NORMALIZED query so saved panels always obey safety laws.
     const normalized = normalizePromQL(parsed.data.promql);
+    const pageIdSchema = z.number().int().positive().optional();
+    const rawPage = (request.body as { pageId?: unknown } | null)?.pageId;
+    const pageId = pageIdSchema.safeParse(rawPage);
+    if (!pageId.success && rawPage !== undefined) {
+      return reply.code(400).send({ error: "Invalid pageId" });
+    }
     const panel = await createPanel({
       tenantId: tenantId.data,
       title: parsed.data.title,
       promql: normalized,
       kind: parsed.data.kind,
       unit: parsed.data.unit,
+      pageId: pageId.success ? pageId.data : undefined,
     });
     return reply.code(201).send({ panel });
   }
@@ -308,6 +330,75 @@ app.delete<{ Params: { tenantId: string; id: string } }>(
 );
 
 const reorderSchema = z.object({ position: z.number().int().min(0).max(999) });
+
+// ---------------------------------------------------------------------------
+// Dashboard pages ("Home" + user-created groupings of panels)
+// ---------------------------------------------------------------------------
+
+const pageSchema = z.object({ name: z.string().min(1).max(64).regex(/^[a-zA-Z0-9-_ ]+$/) });
+
+/** GET /api/pages/:tenantId — ordered pages; lowest position is Home. */
+app.get<{ Params: { tenantId: string } }>("/api/pages/:tenantId", async (request, reply) => {
+  const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+  if (!tenantId.success) {
+    return reply.code(400).send({ error: "Invalid tenantId" });
+  }
+  const pages = await listPages(tenantId.data);
+  // Auto-provision Home on first read so the UI always has a landing page.
+  if (pages.length === 0) {
+    await createPage(tenantId.data, "Home");
+    return reply.code(200).send({ pages: await listPages(tenantId.data) });
+  }
+  return reply.code(200).send({ pages });
+});
+
+app.post<{ Params: { tenantId: string }; Body: unknown }>(
+  "/api/pages/:tenantId",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    if (!tenantId.success) {
+      return reply.code(400).send({ error: "Invalid tenantId" });
+    }
+    const parsed = pageSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "Page name must be 1–64 chars (letters, digits, spaces, - _)",
+      });
+    }
+    const page = await createPage(tenantId.data, parsed.data.name.trim());
+    return reply.code(201).send({ page });
+  }
+);
+
+app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
+  "/api/pages/:tenantId/:id",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!tenantId.success || !id.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or page id" });
+    }
+    const parsed = pageSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "Invalid page name" });
+    }
+    const ok = await renamePage(tenantId.data, id.data, parsed.data.name.trim());
+    return reply.code(ok ? 200 : 404).send({ ok });
+  }
+);
+
+app.delete<{ Params: { tenantId: string; id: string } }>(
+  "/api/pages/:tenantId/:id",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!tenantId.success || !id.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or page id" });
+    }
+    const ok = await deletePage(tenantId.data, id.data);
+    return reply.code(ok ? 200 : 404).send({ ok });
+  }
+);
 
 /** POST /api/panels/:tenantId/:id/reorder — persist a new panel position. */
 app.post<{ Params: { tenantId: string; id: string }; Body: unknown }>(
