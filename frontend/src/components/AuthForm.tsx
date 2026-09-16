@@ -29,7 +29,19 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
           : await login(email.trim(), password);
       applyAuth(response.token, response.user);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Authentication failed");
+      const raw = err instanceof Error ? err.message : "Authentication failed";
+      // Friendlier copy for the common cases; keep backend detail otherwise.
+      if (mode === "signup" && /already exists/i.test(raw)) {
+        setError(`An account with this email already exists — sign in instead`);
+      } else if (mode === "signup" && /failed to fetch/i.test(raw)) {
+        setError("Can't reach the server — check your connection and try again");
+      } else if (mode === "login" && /invalid email or password/i.test(raw)) {
+        setError("Invalid email or password");
+      } else if (/failed to fetch/i.test(raw)) {
+        setError("Can't reach the server — check your connection and try again");
+      } else {
+        setError(raw);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -103,9 +115,21 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
         </div>
 
         {error !== null ? (
-          <p role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
-            {error}
-          </p>
+          <div role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            <p>{error}</p>
+            {mode === "signup" && /already exists/i.test(error) ? (
+              <button
+                type="button"
+                className="mt-1 font-semibold text-emerald-300 hover:text-emerald-200"
+                onClick={() => {
+                  setMode("login");
+                  setError(null);
+                }}
+              >
+                Switch to sign in →
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         <button

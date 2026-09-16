@@ -33,6 +33,7 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Inline connect panel for signed-in users without an upstream | ✅ | `SignedInApp` checks `GET /api/connection/:tenantId` and renders ConnectForm until connected |
 | Custom 404 page | ✅ | SPA rewrite (`frontend/vercel.json`) + branded NotFoundPage |
 | Share button + clipboard + public `/share/:id` (30s refresh) | ✅ | |
+| Friendly connect/auth error copy + demo-Prometheus fallback button | ✅ | Verified working public demo: `https://prometheus.demo.prometheus.io` (the old `prometheus.demo.do.prometheus.io` no longer resolves — do not suggest it). |
 | Per-host drill-down pages | ⏳ | Dashboard aggregates; clicking a host in a table doesn't filter gauges/sparklines to it. |
 | Dashboard refresh controls (manual refresh, window picker) | ⏳ | Instant metrics poll every 15s, sparklines fetched once per mount; no user-facing refresh/window controls. |
 | Alerting (threshold → email/Slack) | ⏳ | The biggest Grafana-parity gap; needs an alerts table + notifier service + UI. |
