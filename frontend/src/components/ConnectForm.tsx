@@ -83,13 +83,19 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
           </label>
           <input
             id="prometheusUrl"
-            type="url"
+            type="text"
+            inputMode="url"
             className={inputClass}
             value={prometheusUrl}
             onChange={(e) => setPrometheusUrl(e.target.value)}
-            placeholder="https://prometheus.example.com or https://grafana.example.com"
+            placeholder="prometheus.internal:9090 · https://prom.example.com · grafana link"
             required
           />
+          <p className="mt-1 text-[11px] text-zinc-600">
+            Bare <span className="font-mono">ip:port</span> works (http:// is
+            added automatically); pasting a Grafana dashboard link is fine — the
+            mount path is detected for you.
+          </p>
         </div>
         <div>
           <label htmlFor="authToken" className="mb-1 block text-xs text-zinc-400">

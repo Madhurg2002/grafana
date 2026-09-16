@@ -17,6 +17,7 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | 3-state circuit breaker | ✅ | 5 fails/3000ms → 30s open → half-open; open-state fallback serves last-known value |
 | Single-poll SSE fan-out (1 query / 5s / tenant) | ✅ | `backend/src/services/sse.ts` |
 | Dual upstream: Prometheus **and** Grafana | ✅ | Auto-detection + Grafana datasource-proxy resolution (`services/upstream.ts`); per-tenant routing with `PROMETHEUS_BASE_URL` as fallback |
+| Paste-friendly upstream input | ✅ | `normalizeUpstreamInput`: bare `ip:port` gets `http://`, Grafana dashboard links (`/d/<uid>/slug?orgId=1`) truncate to the mount prefix, whitespace/slashes stripped. |
 | User accounts (signup/login/me, scrypt + HMAC sessions) | ✅ | `routes/auth.ts`; uniform login errors; 7-day tokens |
 | Shareable read-only links | ✅ | `routes/share.ts`; owner-only management + public snapshot view |
 | Route enforcement of tenant auth on query/stream | ⏳ | `requireTenant`/`requireUser` exist but `/api/query`, `/api/query_range`, `/api/stream` still accept a bare `tenantId` (any caller who guesses an ID can read its metrics). Enforcement was deferred to keep the no-account connect flow working — wire in a signed token or per-tenant API key. |

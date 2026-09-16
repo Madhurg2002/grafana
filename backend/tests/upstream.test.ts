@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { detectUpstream, type ProbeFn } from "../src/services/upstream.js";
+import { detectUpstream, normalizeUpstreamInput, type ProbeFn } from "../src/services/upstream.js";
 
 /**
  * Builds a ProbeFn from a simple routing table so each scenario can simulate
@@ -101,6 +101,45 @@ describe("detectUpstream — Grafana", () => {
         }),
       })
     ).rejects.toThrow(/Grafana detected/i);
+  });
+});
+
+describe("normalizeUpstreamInput", () => {
+  it("prefixes http:// for bare ip:port pastes", () => {
+    const result = normalizeUpstreamInput("10.32.3.119:9090");
+    expect(result.base).toBe("http://10.32.3.119:9090");
+    expect(result.addedScheme).toBe(true);
+  });
+
+  it("strips Grafana dashboard paths back to the mount prefix", () => {
+    const result = normalizeUpstreamInput(
+      "https://onexaura.com/monitor/d/fbq7qzu9zopvkc/node-exporter?orgId=1&refresh=5m"
+    );
+    expect(result.base).toBe("https://onexaura.com/monitor");
+    expect(result.strippedUiPath).toBe(true);
+  });
+
+  it("handles root-level Grafana dashboard links", () => {
+    expect(normalizeUpstreamInput("https://g.example.com/d/abcde/dashboard").base).toBe(
+      "https://g.example.com"
+    );
+  });
+
+  it("keeps genuine sub-path mounts intact", () => {
+    expect(normalizeUpstreamInput("https://ops.example.com/prom/").base).toBe(
+      "https://ops.example.com/prom"
+    );
+  });
+
+  it("trims whitespace and trailing slashes", () => {
+    expect(normalizeUpstreamInput("  https://prom.example.com/  ").base).toBe(
+      "https://prom.example.com"
+    );
+  });
+
+  it("returns unparseable input for probing to fail with a clear error", () => {
+    const result = normalizeUpstreamInput("::::");
+    expect(result.base).toBe("http://::::");
   });
 });
 

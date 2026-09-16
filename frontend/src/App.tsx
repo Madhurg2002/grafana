@@ -16,7 +16,8 @@ type Route =
 
 function parseRoute(): Route {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
-  const shareMatch = /^\/share\/([A-Za-z0-9-]+)$/.exec(path);
+  // Share IDs are `shr_<hex>` — underscores must be in the accepted set.
+  const shareMatch = /^\/share\/([A-Za-z0-9_-]+)$/.exec(path);
   if (shareMatch !== null) {
     return { name: "share", id: shareMatch[1] };
   }
