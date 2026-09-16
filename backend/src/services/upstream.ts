@@ -8,6 +8,63 @@ import { request } from "undici";
 
 export type UpstreamType = "prometheus" | "grafana";
 
+const SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
+
+/**
+ * Grafana UI path segments — when a user pastes a dashboard/explore link we
+ * cut back to the mount prefix so the API lives at <prefix>/api/...
+ */
+const GRAFANA_UI_SEGMENTS = new Set([
+  "d",
+  "dashboards",
+  "explore",
+  "alerting",
+  "profile",
+  "orgs",
+  "connections",
+  "admin",
+  "onboarding",
+  "login",
+  "logout",
+  "signup",
+]);
+
+export interface NormalizedUpstreamInput {
+  /** Scheme + host + surviving mount prefix (no trailing slash). */
+  base: string;
+  /** True when an http:// scheme was added for a bare host[:port] paste. */
+  addedScheme: boolean;
+  /** True when a Grafana UI path / query string / fragment was stripped. */
+  strippedUiPath: boolean;
+}
+
+/**
+ * Accepts everything users actually paste:
+ *  - bare `10.0.0.5:9090` or `prometheus.internal:9090` → http:// prefixed
+ *  - Grafana dashboard links `https://host/monitor/d/<uid>/slug?orgId=1`
+ *    → truncated to `https://host/monitor`
+ *  - trailing slashes / query strings / fragments → stripped
+ */
+export function normalizeUpstreamInput(rawInput: string): NormalizedUpstreamInput {
+  const candidate = rawInput.trim().replace(/\s+/g, "");
+  const addedScheme = !SCHEME_RE.test(candidate);
+  const withScheme = addedScheme ? `http://${candidate}` : candidate;
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    // Not parseable even with a scheme — hand it back untouched; detection
+    // will fail with a clear probe error.
+    return { base: withScheme.replace(/\/+$/, ""), addedScheme, strippedUiPath: false };
+  }
+  const hadTail = parsed.search.length > 0 || parsed.hash.length > 0;
+  const segments = parsed.pathname.split("/").filter((segment) => segment.length > 0);
+  const uiIndex = segments.findIndex((segment) => GRAFANA_UI_SEGMENTS.has(segment.toLowerCase()));
+  const kept = uiIndex >= 0 ? segments.slice(0, uiIndex) : segments;
+  const base = `${parsed.protocol}//${parsed.host}${kept.length > 0 ? `/${kept.join("/")}` : ""}`;
+  return { base, addedScheme, strippedUiPath: uiIndex >= 0 || hadTail };
+}
+
 export interface DetectionResult {
   type: UpstreamType;
   /** Effective base URL to use for /api/v1/query(_range). */
@@ -52,7 +109,8 @@ export async function detectUpstream(
   options: DetectOptions = {}
 ): Promise<DetectionResult> {
   const probe = options.probe ?? DEFAULT_PROBE;
-  const base = rawUrl.replace(/\/+$/, "");
+  const normalized = normalizeUpstreamInput(rawUrl);
+  const base = normalized.base;
   const headers: Record<string, string> = { accept: "application/json" };
   if (options.authToken !== undefined && options.authToken.length > 0) {
     headers.authorization = `Bearer ${options.authToken}`;
@@ -117,6 +175,6 @@ export async function detectUpstream(
   }
 
   throw new Error(
-    "URL is neither a reachable Prometheus nor a Grafana instance — check the URL/token and try again"
+    `URL is neither a reachable Prometheus nor a Grafana instance (probed ${base}) — check the URL/token and try again`
   );
 }
