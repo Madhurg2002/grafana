@@ -264,7 +264,28 @@ function NotFoundPage({ path }: { path: string }): JSX.Element {
 }
 
 function Router(): JSX.Element {
-  const [route] = useState<Route>(parseRoute);
+  const { token, user, ready } = useAuth();
+  const [route, setRoute] = useState<Route>(parseRoute);
+
+  // Re-parse the URL on back/forward navigation and programmatic pushes.
+  useEffect(() => {
+    function onPop(): void {
+      setRoute(parseRoute());
+    }
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+    };
+  }, []);
+
+  // Signed-in users sitting on /login or /signup go straight to the app.
+  useEffect(() => {
+    if (ready && token !== null && user !== null && route.name === "auth") {
+      window.history.replaceState(null, "", "/");
+      setRoute(parseRoute());
+    }
+  }, [ready, token, user, route.name]);
+
   if (route.name === "share") {
     return <SharePage id={route.id} />;
   }
