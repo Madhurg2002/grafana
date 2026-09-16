@@ -5,8 +5,9 @@ import {
   createUser,
   findUserByEmail,
   ensureOwnedTenant,
+  findUserById,
 } from "../db/users.js";
-import { issueUserToken } from "../middleware/auth.js";
+import { issueUserToken, requireUser } from "../middleware/auth.js";
 
 const signupSchema = z.object({
   email: z.string().email().max(254),
@@ -65,6 +66,30 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       },
     };
     return reply.code(201).send(response);
+  });
+
+  /** GET /api/auth/me — session restore for the client. */
+  app.get("/api/auth/me", async (request, reply) => {
+    const claims = await requireUser(request, reply);
+    if (claims === null) {
+      return reply; // 401 already sent
+    }
+    const user = await findUserById(claims.sub);
+    if (user === null) {
+      return reply.code(401).send({ error: "Account no longer exists" });
+    }
+    const tenantId = await ensureOwnedTenant(
+      user.id,
+      user.display_name ?? user.email.split("@")[0]
+    );
+    return reply.code(200).send({
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.display_name,
+        tenantId,
+      },
+    });
   });
 
   app.post<{ Body: unknown }>("/api/auth/login", async (request, reply) => {
