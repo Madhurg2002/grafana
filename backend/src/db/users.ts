@@ -10,6 +10,12 @@ export interface UserRow {
   created_at: Date;
 }
 
+export type ShareAccess =
+  | "anyone_view"
+  | "anyone_edit"
+  | "email_view"
+  | "email_edit";
+
 export interface ShareLinkRow {
   id: string;
   tenant_id: string;
@@ -17,6 +23,9 @@ export interface ShareLinkRow {
   label: string | null;
   created_at: Date;
   revoked: boolean;
+  access: ShareAccess;
+  allowed_emails: string[];
+  invited_emails: string[];
 }
 
 export function newId(prefix: string): string {
@@ -83,20 +92,51 @@ export async function createShareLink(input: {
   tenantId: string;
   createdBy: string;
   label?: string;
+  access?: ShareAccess;
+  allowedEmails?: string[];
 }): Promise<ShareLinkRow> {
+  const access = input.access ?? "anyone_view";
   const result: QueryResult<ShareLinkRow> = await getPool().query(
-    `INSERT INTO share_links (id, tenant_id, created_by, label)
-     VALUES ($1, $2, $3, $4)
-     ON CONFLICT (tenant_id, label) DO UPDATE SET revoked = FALSE
-     RETURNING id, tenant_id, created_by, label, created_at, revoked`,
-    [newId("shr"), input.tenantId, input.createdBy, input.label ?? null]
+    `INSERT INTO share_links (id, tenant_id, created_by, label, access, allowed_emails)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (tenant_id, label) DO UPDATE
+       SET revoked = FALSE, access = EXCLUDED.access,
+           allowed_emails = EXCLUDED.allowed_emails
+     RETURNING id, tenant_id, created_by, label, created_at, revoked,
+               access, allowed_emails, invited_emails`,
+    [
+      newId("shr"),
+      input.tenantId,
+      input.createdBy,
+      input.label ?? null,
+      access,
+      (input.allowedEmails ?? []).map((e) => e.trim().toLowerCase()),
+    ]
   );
   return result.rows[0] as ShareLinkRow;
 }
 
+/** Records that invite emails were dispatched for a share link. */
+export async function recordInvitedEmails(
+  id: string,
+  emails: string[]
+): Promise<void> {
+  await getPool().query(
+    `UPDATE share_links
+     SET invited_emails = (
+       SELECT array_agg(DISTINCT e)
+       FROM unnest(invited_emails || $2::text[]) AS e
+     )
+     WHERE id = $1`,
+    [id, emails.map((e) => e.trim().toLowerCase())]
+  );
+}
+
 export async function getShareLink(id: string): Promise<ShareLinkRow | null> {
   const result = await getPool().query<ShareLinkRow>(
-    "SELECT id, tenant_id, created_by, label, created_at, revoked FROM share_links WHERE id = $1",
+    `SELECT id, tenant_id, created_by, label, created_at, revoked,
+            access, allowed_emails, invited_emails
+     FROM share_links WHERE id = $1`,
     [id]
   );
   return result.rows[0] ?? null;
@@ -104,7 +144,8 @@ export async function getShareLink(id: string): Promise<ShareLinkRow | null> {
 
 export async function listShareLinks(tenantId: string): Promise<ShareLinkRow[]> {
   const result = await getPool().query<ShareLinkRow>(
-    `SELECT id, tenant_id, created_by, label, created_at, revoked
+    `SELECT id, tenant_id, created_by, label, created_at, revoked,
+            access, allowed_emails, invited_emails
      FROM share_links WHERE tenant_id = $1 AND revoked = FALSE
      ORDER BY created_at DESC`,
     [tenantId]

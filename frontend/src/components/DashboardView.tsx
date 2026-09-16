@@ -13,10 +13,10 @@ import { GaugeCard } from "./GaugeCard";
 import { SparkLineCard } from "./SparkLineCard";
 import { ConnectionSwitcher } from "./ConnectionSwitcher";
 import { CustomPanels } from "./CustomPanels";
+import { ShareDialog } from "./ShareDialog";
 import { DEFAULT_QUERIES, useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
 import { useSSE } from "../hooks/useSSE";
 import { useAuth } from "../hooks/useAuth";
-import { createShareLink } from "../lib/api";
 
 function latestScalar(
   data: { result: unknown[] } | null
@@ -32,9 +32,7 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
   const { status } = useSSE(tenantId);
   const { token } = useAuth();
   const [activeLabel, setActiveLabel] = useState<string>("default");
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
-  const [shareError, setShareError] = useState<string | null>(null);
-  const [sharing, setSharing] = useState(false);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const cpu = useInstantMetric(tenantId, DEFAULT_QUERIES.cpu);
   const ram = useInstantMetric(tenantId, DEFAULT_QUERIES.ram);
   const hostsUp = useInstantMetric(tenantId, DEFAULT_QUERIES.hostsUp);
@@ -82,46 +80,16 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
           <button
             type="button"
             data-testid="share-button"
-            disabled={sharing}
-            onClick={() => {
-              void (async () => {
-                setSharing(true);
-                setShareError(null);
-                try {
-                  const link = await createShareLink(tenantId);
-                  setShareUrl(`${window.location.origin}${link.url}`);
-                  try {
-                    await navigator.clipboard.writeText(`${window.location.origin}${link.url}`);
-                  } catch {
-                    // Clipboard unavailable — the URL is still shown below.
-                  }
-                } catch (err) {
-                  setShareError(err instanceof Error ? err.message : "Failed to create share link");
-                } finally {
-                  setSharing(false);
-                }
-              })();
-            }}
+            onClick={() => setShareDialogOpen(true)}
             className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
           >
             <Share2 className="h-3.5 w-3.5" aria-hidden />
-            {sharing ? "Creating…" : "Share read-only view"}
+            Share
           </button>
         </div>
       ) : null}
-      {shareUrl !== null ? (
-        <div className="mx-auto mt-2 flex max-w-6xl px-4 sm:px-6">
-          <p className="w-full rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-200" role="status">
-            Share link copied to clipboard: <span className="font-mono break-all">{shareUrl}</span>
-          </p>
-        </div>
-      ) : null}
-      {shareError !== null ? (
-        <div className="mx-auto mt-2 flex max-w-6xl px-4 sm:px-6">
-          <p className="w-full rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300" role="alert">
-            {shareError}
-          </p>
-        </div>
+      {shareDialogOpen ? (
+        <ShareDialog tenantId={tenantId} onClose={() => setShareDialogOpen(false)} />
       ) : null}
 
       <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
