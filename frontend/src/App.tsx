@@ -10,10 +10,11 @@ import { AuthProvider, useAuth } from "./hooks/useAuth";
 type Route =
   | { name: "home" }
   | { name: "auth"; mode: "login" | "signup" }
-  | { name: "share"; id: string };
+  | { name: "share"; id: string }
+  | { name: "not-found"; path: string };
 
 function parseRoute(): Route {
-  const path = window.location.pathname;
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
   const shareMatch = /^\/share\/([A-Za-z0-9-]+)$/.exec(path);
   if (shareMatch !== null) {
     return { name: "share", id: shareMatch[1] };
@@ -24,7 +25,10 @@ function parseRoute(): Route {
   if (path === "/signup") {
     return { name: "auth", mode: "signup" };
   }
-  return { name: "home" };
+  if (path === "/" || path === "/index.html") {
+    return { name: "home" };
+  }
+  return { name: "not-found", path };
 }
 
 function SignedInApp(): JSX.Element {
@@ -171,6 +175,41 @@ function AuthPage({ mode }: { mode: "login" | "signup" }): JSX.Element {
   );
 }
 
+function NotFoundPage({ path }: { path: string }): JSX.Element {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4 text-center">
+      <motion.div initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }}>
+        <Radio className="mx-auto h-8 w-8 text-zinc-600" aria-hidden />
+      </motion.div>
+      <h1 className="text-3xl font-bold tracking-tight">404</h1>
+      <p className="max-w-sm text-sm text-zinc-400">
+        Nothing lives at <span className="font-mono text-zinc-200">{path}</span> — the page
+        may have been moved, or the link is wrong.
+      </p>
+      <div className="mt-2 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            window.history.pushState(null, "/", "/");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+            window.location.assign("/");
+          }}
+          className="rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
+        >
+          Go to dashboard
+        </button>
+        <button
+          type="button"
+          onClick={() => window.history.back()}
+          className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-600"
+        >
+          Go back
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Router(): JSX.Element {
   const [route] = useState<Route>(parseRoute);
   if (route.name === "share") {
@@ -178,6 +217,9 @@ function Router(): JSX.Element {
   }
   if (route.name === "auth") {
     return <AuthPage mode={route.mode} />;
+  }
+  if (route.name === "not-found") {
+    return <NotFoundPage path={route.path} />;
   }
   return <Home />;
 }
