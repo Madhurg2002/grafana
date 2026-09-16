@@ -10,13 +10,14 @@ import { Pool } from "pg";
 import {
   getPool,
   setPool,
-  ensureSchema,
   upsertTenant,
   upsertConnection,
   getConnection,
   tenantExists,
   healthcheck,
 } from "../src/db/schema.js";
+import { initializeDatabase, runMigrations } from "../src/db/migrations/runner.js";
+import { MIGRATIONS } from "../src/db/migrations/index.js";
 import { encryptToken, decryptToken } from "../src/db/encryption.js";
 
 process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ?? "a".repeat(64);
@@ -53,9 +54,39 @@ describe.skipIf(!dbAvailable)("PostgreSQL schema integration", () => {
     await expect(healthcheck()).resolves.toBe(true);
   });
 
-  it("ensureSchema is idempotent", async () => {
-    await ensureSchema();
-    await ensureSchema();
+  it("initializeDatabase is idempotent (all migrations skip on second run)", async () => {
+    const first = await initializeDatabase(getPool(), MIGRATIONS);
+    expect(first.applied.length).toBeGreaterThanOrEqual(2);
+    const second = await initializeDatabase(getPool(), MIGRATIONS);
+    expect(second.applied).toEqual([]);
+    expect(second.skipped.length).toBe(MIGRATIONS.length);
+  });
+
+  it("updated_at trigger refreshes on connection update", async () => {
+    await upsertTenant(TENANT, "Trigger Tenant");
+    await upsertConnection({
+      tenantId: TENANT,
+      prometheusUrl: "https://before.example.com",
+      authTokenEncrypted: null,
+      status: "unknown",
+    });
+    const before = await getConnection(TENANT);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await upsertConnection({
+      tenantId: TENANT,
+      prometheusUrl: "https://after.example.com",
+      authTokenEncrypted: null,
+      status: "connected",
+    });
+    const after = await getConnection(TENANT);
+    expect(after?.updated_at.getTime()).toBeGreaterThanOrEqual(
+      before?.updated_at.getTime() ?? 0
+    );
+  });
+
+  it("runMigrations detects tampered migrations via checksum", async () => {
+    const tampered = [{ name: MIGRATIONS[0]?.name ?? "001", sql: "SELECT 1;" }];
+    await expect(runMigrations(getPool(), tampered)).rejects.toThrow(/checksum mismatch/);
   });
 
   it("upserts a tenant and checks existence", async () => {
