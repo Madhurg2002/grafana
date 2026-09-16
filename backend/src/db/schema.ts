@@ -170,6 +170,7 @@ export interface PanelRow {
   kind: "sparkline" | "gauge" | "stat";
   unit: string | null;
   position: number;
+  page_id: number | null;
   created_at: Date;
 }
 
@@ -230,11 +231,13 @@ export async function deleteConnection(tenantId: string, connectionId: number): 
 // Custom dashboard panels (user-defined views)
 // ---------------------------------------------------------------------------
 
-export async function listPanels(tenantId: string): Promise<PanelRow[]> {
+export async function listPanels(tenantId: string, pageId?: number): Promise<PanelRow[]> {
   const result = await getPool().query<PanelRow>(
-    `SELECT id, tenant_id, title, promql, kind, unit, position, created_at
-     FROM dashboard_panels WHERE tenant_id = $1 ORDER BY position, id`,
-    [tenantId]
+    `SELECT id, tenant_id, title, promql, kind, unit, position, page_id, created_at
+     FROM dashboard_panels
+     WHERE tenant_id = $1 AND ($2::int IS NULL OR page_id = $2)
+     ORDER BY position, id`,
+    [tenantId, pageId ?? null]
   );
   return result.rows;
 }
@@ -245,15 +248,18 @@ export async function createPanel(input: {
   promql: string;
   kind: "sparkline" | "gauge" | "stat";
   unit?: string;
+  pageId?: number | null;
 }): Promise<PanelRow> {
   const result = await getPool().query<PanelRow>(
-    `INSERT INTO dashboard_panels (tenant_id, title, promql, kind, unit, position)
+    `INSERT INTO dashboard_panels (tenant_id, title, promql, kind, unit, position, page_id)
      VALUES ($1, $2, $3, $4, $5,
-             COALESCE((SELECT MAX(position) + 1 FROM dashboard_panels WHERE tenant_id = $1), 0))
+             COALESCE((SELECT MAX(position) + 1 FROM dashboard_panels WHERE tenant_id = $1), 0),
+             $6)
      ON CONFLICT (tenant_id, title) DO UPDATE SET
-       promql = EXCLUDED.promql, kind = EXCLUDED.kind, unit = EXCLUDED.unit
-     RETURNING id, tenant_id, title, promql, kind, unit, position, created_at`,
-    [input.tenantId, input.title, input.promql, input.kind, input.unit ?? null]
+       promql = EXCLUDED.promql, kind = EXCLUDED.kind, unit = EXCLUDED.unit,
+       page_id = EXCLUDED.page_id
+     RETURNING id, tenant_id, title, promql, kind, unit, position, page_id, created_at`,
+    [input.tenantId, input.title, input.promql, input.kind, input.unit ?? null, input.pageId ?? null]
   );
   return result.rows[0];
 }
@@ -262,6 +268,76 @@ export async function deletePanel(tenantId: string, panelId: number): Promise<bo
   const result = await getPool().query(
     "DELETE FROM dashboard_panels WHERE id = $1 AND tenant_id = $2",
     [panelId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export interface DashboardPageRow {
+  id: number;
+  tenant_id: string;
+  name: string;
+  position: number;
+}
+
+export async function listPages(tenantId: string): Promise<DashboardPageRow[]> {
+  const result = await getPool().query<DashboardPageRow>(
+    `SELECT id, tenant_id, name, position FROM dashboard_pages
+     WHERE tenant_id = $1 ORDER BY position, id`,
+    [tenantId]
+  );
+  return result.rows;
+}
+
+export async function createPage(tenantId: string, name: string): Promise<DashboardPageRow> {
+  const result = await getPool().query<DashboardPageRow>(
+    `INSERT INTO dashboard_pages (tenant_id, name, position)
+     VALUES ($1, $2, COALESCE((SELECT MAX(position) + 1 FROM dashboard_pages WHERE tenant_id = $1), 0))
+     RETURNING id, tenant_id, name, position`,
+    [tenantId, name]
+  );
+  return result.rows[0] as DashboardPageRow;
+}
+
+export async function deletePage(tenantId: string, pageId: number): Promise<boolean> {
+  // Panels are re-homed to the tenant's first page instead of being lost.
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const target = await client.query<{ id: number }>(
+      `SELECT id FROM dashboard_pages WHERE tenant_id = $1 AND id <> $2
+       ORDER BY position, id LIMIT 1`,
+      [tenantId, pageId]
+    );
+    if (target.rowCount === 1) {
+      const homeId = target.rows[0]?.id;
+      await client.query(
+        "UPDATE dashboard_panels SET page_id = $1 WHERE page_id = $2 AND tenant_id = $3",
+        [homeId, pageId, tenantId]
+      );
+    } else {
+      await client.query(
+        "UPDATE dashboard_panels SET page_id = NULL WHERE page_id = $1 AND tenant_id = $2",
+        [pageId, tenantId]
+      );
+    }
+    const del = await client.query(
+      "DELETE FROM dashboard_pages WHERE id = $1 AND tenant_id = $2",
+      [pageId, tenantId]
+    );
+    await client.query("COMMIT");
+    return (del.rowCount ?? 0) > 0;
+  } catch {
+    await client.query("ROLLBACK");
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
+export async function renamePage(tenantId: string, pageId: number, name: string): Promise<boolean> {
+  const result = await getPool().query(
+    "UPDATE dashboard_pages SET name = $1 WHERE id = $2 AND tenant_id = $3",
+    [name, pageId, tenantId]
   );
   return (result.rowCount ?? 0) > 0;
 }

@@ -299,18 +299,21 @@ export interface DashboardPanel {
   kind: PanelKind;
   unit: string | null;
   position: number;
+  page_id: number | null;
   created_at: string;
 }
 
-export function listPanels(tenantId: string): Promise<{ panels: DashboardPanel[] }> {
+export function listPanels(tenantId: string, pageId?: number): Promise<{ panels: DashboardPanel[] }> {
   return authedJson<{ panels: DashboardPanel[] }>(
-    `/api/panels/${encodeURIComponent(tenantId)}`
+    `/api/panels/${encodeURIComponent(tenantId)}${
+      pageId !== undefined ? `?pageId=${pageId}` : ""
+    }`
   );
 }
 
 export function createPanel(
   tenantId: string,
-  panel: { title: string; promql: string; kind: PanelKind; unit?: string }
+  panel: { title: string; promql: string; kind: PanelKind; unit?: string; pageId?: number }
 ): Promise<{ panel: DashboardPanel }> {
   return authedJson<{ panel: DashboardPanel }>(
     `/api/panels/${encodeURIComponent(tenantId)}`,
@@ -321,8 +324,47 @@ export function createPanel(
         promql: panel.promql,
         kind: panel.kind,
         ...(panel.unit !== undefined && panel.unit.length > 0 ? { unit: panel.unit } : {}),
+        ...(panel.pageId !== undefined ? { pageId: panel.pageId } : {}),
       }),
     }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard pages ("Home" + custom groupings)
+// ---------------------------------------------------------------------------
+
+export interface DashboardPage {
+  id: number;
+  tenant_id: string;
+  name: string;
+  position: number;
+}
+
+export function listPages(tenantId: string): Promise<{ pages: DashboardPage[] }> {
+  return authedJson<{ pages: DashboardPage[] }>(
+    `/api/pages/${encodeURIComponent(tenantId)}`
+  );
+}
+
+export function createPage(tenantId: string, name: string): Promise<{ page: DashboardPage }> {
+  return authedJson<{ page: DashboardPage }>(
+    `/api/pages/${encodeURIComponent(tenantId)}`,
+    { method: "POST", body: JSON.stringify({ name }) }
+  );
+}
+
+export function renamePage(tenantId: string, id: number, name: string): Promise<{ ok: boolean }> {
+  return authedJson<{ ok: boolean }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/${id}`,
+    { method: "PATCH", body: JSON.stringify({ name }) }
+  );
+}
+
+export function deletePage(tenantId: string, id: number): Promise<{ ok: boolean }> {
+  return authedJson<{ ok: boolean }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/${id}`,
+    { method: "DELETE" }
   );
 }
 
