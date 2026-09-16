@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { encryptToken } from "../db/encryption.js";
-import { upsertTenant, upsertConnection } from "../db/schema.js";
+import { upsertTenant, upsertConnection, getConnection } from "../db/schema.js";
 import { getEnv } from "../config/env.js";
 import { detectUpstream } from "../services/upstream.js";
 
@@ -52,7 +52,7 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
       detection = await detectUpstream(prometheusUrl, { authToken });
       if (upstreamType !== undefined && detection.type !== upstreamType) {
         return reply.code(400).send({
-          error: `URL resolved as ${detection.type} but upstreamType=upstreamType was requested`,
+          error: `URL resolved as ${detection.type} but upstreamType=${upstreamType} was requested`,
         });
       }
     } catch (error) {
@@ -102,6 +102,7 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
       prometheusUrl: detection.queryBaseUrl,
       authTokenEncrypted: encrypted,
       status: probeOk ? "connected" : "error",
+      upstreamType: detection.type,
     });
 
     const response: ConnectResponse = {
@@ -115,4 +116,35 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
     };
     return reply.code(probeOk ? 200 : 502).send(response);
   });
+
+  /** GET /api/connection/:tenantId — connection state + detected upstream flavor. */
+  app.get<{ Params: { tenantId: string } }>(
+    "/api/connection/:tenantId",
+    async (request, reply) => {
+      const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+      if (!tenantId.success) {
+        return reply.code(400).send({ error: "Invalid tenantId" });
+      }
+      const connection = await getConnection(tenantId.data);
+      if (connection === null) {
+        return reply.code(404).send({ error: "No connection for this tenant" });
+      }
+      return reply.code(200).send({
+        tenantId: connection.tenant_id,
+        status: connection.status,
+        upstreamType: connection.upstream_type ?? "prometheus",
+        // Never expose the URL to anonymous callers beyond its host.
+        upstreamHost: safeHost(connection.prometheus_url),
+        updatedAt: connection.updated_at,
+      });
+    }
+  );
+}
+
+function safeHost(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
 }
