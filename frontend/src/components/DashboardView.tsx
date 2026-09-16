@@ -153,6 +153,45 @@ export function DashboardView({ tenantId }: { tenantId: string }): JSX.Element {
           />
         </section>
 
+        {hostsUp.data !== null && hostsUp.data.result.length > 0 ? (
+          <section className="mt-6 overflow-hidden rounded-xl border border-zinc-800/80" data-testid="hosts-table">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-zinc-900/70 text-zinc-400">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Instance</th>
+                  <th className="px-4 py-2 font-medium">Job</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hostsUp.data.result.slice(0, 100).map((entry) => {
+                  const item = entry as {
+                    metric?: Record<string, string>;
+                    value?: { value: number };
+                  };
+                  const up = item.value?.value ?? 0;
+                  return (
+                    <tr
+                      key={`${item.metric?.job ?? "?"}/${item.metric?.instance ?? "?"}`}
+                      className="border-t border-zinc-800/60"
+                    >
+                      <td className="px-4 py-2 font-mono text-zinc-200">
+                        {item.metric?.instance ?? "unknown"}
+                      </td>
+                      <td className="px-4 py-2 text-zinc-400">{item.metric?.job ?? "unknown"}</td>
+                      <td className="px-4 py-2">
+                        <span className={up === 1 ? "text-emerald-300" : "text-rose-300"}>
+                          {up === 1 ? "up" : "down"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+
         {token !== null ? <CustomPanels tenantId={tenantId} /> : null}
 
         <motion.p

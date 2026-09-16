@@ -5,7 +5,9 @@ import { fetchShareView, type ShareViewPayload } from "../lib/api";
 import { HealthBadge } from "./HealthBadge";
 import { StatusCard } from "./StatusCard";
 import { GaugeCard } from "./GaugeCard";
+import { SparkLineCard } from "./SparkLineCard";
 import { Server } from "lucide-react";
+import type { MetricSeries } from "../hooks/types";
 
 /**
  * Public read-only dashboard rendered from a share link.
@@ -64,6 +66,8 @@ export function ShareView({ id }: { id: string }): JSX.Element {
 
   const cpu = data.metrics.cpuPercent ?? 0;
   const ram = data.metrics.ramPercent ?? 0;
+  const rxSeries: MetricSeries[] = data.metrics.networkRxSeries ?? [];
+  const txSeries: MetricSeries[] = data.metrics.networkTxSeries ?? [];
 
   return (
     <div className="min-h-screen">
@@ -93,6 +97,23 @@ export function ShareView({ id }: { id: string }): JSX.Element {
           <GaugeCard title="CPU Utilization" percent={cpu} level={levelFor(cpu)} />
           <GaugeCard title="RAM Utilization" percent={ram} level={levelFor(ram)} />
         </section>
+
+        {rxSeries.length > 0 || txSeries.length > 0 ? (
+          <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <SparkLineCard
+              title="Network RX"
+              unit="bytes/s"
+              series={rxSeries}
+              stroke="#34d399"
+            />
+            <SparkLineCard
+              title="Network TX"
+              unit="bytes/s"
+              series={txSeries}
+              stroke="#60a5fa"
+            />
+          </section>
+        ) : null}
 
         {data.metrics.hosts.length > 0 ? (
           <section className="mt-4 overflow-hidden rounded-xl border border-zinc-800/80">

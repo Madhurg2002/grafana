@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LayoutDashboard, Plus, Trash2 } from "lucide-react";
 import { GaugeCard } from "./GaugeCard";
 import { SparkLineCard } from "./SparkLineCard";
 import { StatusCard } from "./StatusCard";
+import { PromqlHelper } from "./PromqlHelper";
 import { useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
 import {
   createPanel,
@@ -81,6 +82,7 @@ function formatValue(value: number): string {
  * server-side and render here alongside (below) the built-in dashboard cards.
  */
 export function CustomPanels({ tenantId }: Props): JSX.Element | null {
+  const promqlRef = useRef<HTMLTextAreaElement | null>(null);
   const [panels, setPanels] = useState<DashboardPanel[]>([]);
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
@@ -215,12 +217,19 @@ export function CustomPanels({ tenantId }: Props): JSX.Element | null {
               className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
             />
           </div>
-          <input
-            value={promql}
-            onChange={(e) => setPromql(e.target.value)}
-            placeholder='PromQL — e.g. rate(node_network_receive_bytes_total{device=~"eth.*|ens.*|eno.*|bond.*"}[5m])'
-            className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
-          />
+          <div className="relative">
+            <textarea
+              ref={promqlRef}
+              value={promql}
+              onChange={(e) => setPromql(e.target.value)}
+              placeholder='PromQL — e.g. rate(node_network_receive_bytes_total{device=~"eth.*|ens.*|eno.*|bond.*"}[5m])'
+              rows={2}
+              className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+            />
+            <div className="mt-1">
+              <PromqlHelper tenantId={tenantId} value={promql} onChange={setPromql} />
+            </div>
+          </div>
           {error !== null ? (
             <p className="text-[11px] text-rose-400" role="alert">
               {error}

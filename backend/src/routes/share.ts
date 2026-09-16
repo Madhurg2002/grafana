@@ -8,7 +8,7 @@ import {
   revokeShareLink,
   tenantOwnedBy,
 } from "../db/users.js";
-import { instantQuery } from "../services/prometheus.js";
+import { instantQuery, rangeQuery } from "../services/prometheus.js";
 import { DEFAULT_PUBLIC_QUERIES } from "../services/publicQueries.js";
 
 const createSchema = z.object({
@@ -22,6 +22,16 @@ export interface ShareViewHost {
   up: number;
 }
 
+export interface ShareSeriesPoint {
+  timestamp: number;
+  value: number;
+}
+
+export interface ShareSeries {
+  label: string;
+  points: ShareSeriesPoint[];
+}
+
 export interface ShareViewPayload {
   tenantId: string;
   label: string | null;
@@ -32,6 +42,8 @@ export interface ShareViewPayload {
     hostsTotal: number;
     cpuPercent: number | null;
     ramPercent: number | null;
+    networkRxSeries: ShareSeries[];
+    networkTxSeries: ShareSeries[];
   };
   generatedAt: string;
 }
@@ -42,6 +54,22 @@ function scalarFrom(result: unknown[]): number | null {
   }
   const first = result[0] as { value?: { value: number } };
   return typeof first.value?.value === "number" ? first.value.value : null;
+}
+
+/** Maps a range-vector payload into labeled point series for sparklines. */
+function seriesFrom(result: unknown[]): ShareSeries[] {
+  return result.slice(0, 30).map((entry) => {
+    const item = entry as {
+      metric?: Record<string, string>;
+      values?: Array<{ timestamp: number; value: number }>;
+    };
+    const instance = item.metric?.instance ?? "series";
+    const device = item.metric?.device;
+    return {
+      label: device !== undefined ? `${instance} · ${device}` : instance,
+      points: item.values ?? [],
+    };
+  });
 }
 
 /** Registers share-link routes: owner-managed creation + public read-only view. */
@@ -124,6 +152,8 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       hostsTotal: 0,
       cpuPercent: null,
       ramPercent: null,
+      networkRxSeries: [],
+      networkTxSeries: [],
     };
 
     try {
@@ -145,6 +175,22 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
 
       const ram = await instantQuery({ tenantId: link.tenant_id, query: DEFAULT_PUBLIC_QUERIES.ram });
       metrics.ramPercent = scalarFrom(ram.result.result);
+
+      // Network sparklines — same 60m/5m window the live dashboard uses.
+      const end = new Date();
+      const start = new Date(end.getTime() - 60 * 60_000);
+      const rangeCommon = {
+        tenantId: link.tenant_id,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        step: "5m" as const,
+      };
+      const [rx, tx] = await Promise.all([
+        rangeQuery({ ...rangeCommon, query: DEFAULT_PUBLIC_QUERIES.networkRx }),
+        rangeQuery({ ...rangeCommon, query: DEFAULT_PUBLIC_QUERIES.networkTx }),
+      ]);
+      metrics.networkRxSeries = seriesFrom(rx.result.result);
+      metrics.networkTxSeries = seriesFrom(tx.result.result);
     } catch {
       // Upstream degraded — return whatever we have; client shows stale state.
     }
