@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { apiBase } from "../lib/api";
 import type { HostHealth } from "./types";
 
 export type StreamStatus = "connecting" | "live" | "disconnected";
@@ -22,7 +23,9 @@ export function useSSE(tenantId: string | null): {
     }
 
     setStatus("connecting");
-    const source = new EventSource(`/api/stream?tenantId=${encodeURIComponent(tenantId)}`);
+    const source = new EventSource(
+      `${apiBase()}/api/stream?tenantId=${encodeURIComponent(tenantId)}`
+    );
     sourceRef.current = source;
 
     source.addEventListener("connected", () => {
