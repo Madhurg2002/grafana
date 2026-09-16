@@ -3,6 +3,8 @@ import Fastify, { type FastifyInstance } from "fastify";
 import { connectRoutes } from "../src/routes/connect.js";
 import { queryRoutes } from "../src/routes/query.js";
 import { streamRoutes } from "../src/routes/stream.js";
+import { authRoutes } from "../src/routes/auth.js";
+import { shareRoutes } from "../src/routes/share.js";
 import { setEnv, type Env } from "../src/config/env.js";
 import { setQueryCache, QueryCache } from "../src/services/cache.js";
 import { setCircuitBreaker, CircuitBreaker } from "../src/services/circuitBreaker.js";
@@ -27,6 +29,8 @@ function buildTestApp(): FastifyInstance {
   void app.register(connectRoutes);
   void app.register(queryRoutes);
   void app.register(streamRoutes);
+  void app.register(authRoutes);
+  void app.register(shareRoutes);
   return app;
 }
 
@@ -50,6 +54,40 @@ vi.mock("../src/db/schema.js", () => ({
   healthcheck: vi.fn(async () => true),
   ensureSchema: vi.fn(async () => undefined),
 }));
+
+vi.mock("../src/db/users.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/db/users.js")>();
+  return {
+    ...actual,
+    createUser: vi.fn(async (input: { email: string; displayName?: string }) => ({
+      id: "usr_test123",
+      email: input.email,
+      password_hash: "x",
+      display_name: input.displayName ?? null,
+      created_at: new Date(),
+    })),
+    findUserByEmail: vi.fn(async () => null),
+    findUserById: vi.fn(async (id: string) => ({
+      id,
+      email: "a@test.dev",
+      password_hash: "x",
+      display_name: "A",
+      created_at: new Date(),
+    })),
+    ensureOwnedTenant: vi.fn(async (userId: string) => `t_${userId.replace(/^usr_/, "")}`),
+    tenantOwnedBy: vi.fn(async () => true),
+    createShareLink: vi.fn(async (input: { tenantId: string; label?: string }) => ({
+      id: "shr_test123",
+      tenant_id: input.tenantId,
+      created_by: "usr_test123",
+      label: input.label ?? null,
+      created_at: new Date(),
+      revoked: false,
+    })),
+    listShareLinks: vi.fn(async () => []),
+    revokeShareLink: vi.fn(async () => true),
+  };
+});
 
 vi.mock("../src/services/upstream.js", () => ({
   detectUpstream: vi.fn(async () => ({
@@ -294,6 +332,89 @@ describe("API routes (app.inject)", () => {
         },
       });
       expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe("Auth + connection routes", () => {
+    it("POST /api/auth/signup creates an account and returns a token", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123", displayName: "A" },
+      });
+      expect(response.statusCode).toBe(201);
+      const body = response.json() as { token: string; user: { email: string; tenantId: string } };
+      expect(body.token).toBeTruthy();
+      expect(body.user.email).toBe("a@test.dev");
+      expect(body.user.tenantId).toBe("t_test123");
+    });
+
+    it("POST /api/auth/login rejects bad credentials with 401", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: { email: "nobody@test.dev", password: "wrong-password" },
+      });
+      expect(response.statusCode).toBe(401);
+      // Uniform message — no user enumeration.
+      expect((response.json() as { error: string }).error).toBe("Invalid email or password");
+    });
+
+    it("GET /api/auth/me restores a session from a bearer token", async () => {
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      const me = await app.inject({
+        method: "GET",
+        url: "/api/auth/me",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(me.statusCode).toBe(200);
+      const body = me.json() as { user: { id: string; tenantId: string } };
+      expect(body.user.id).toBe("usr_test123");
+      expect(body.user.tenantId).toBe("t_test123");
+    });
+
+    it("GET /api/auth/me rejects missing/invalid tokens with 401", async () => {
+      const noAuth = await app.inject({ method: "GET", url: "/api/auth/me" });
+      expect(noAuth.statusCode).toBe(401);
+      const badAuth = await app.inject({
+        method: "GET",
+        url: "/api/auth/me",
+        headers: { authorization: "Bearer not.a.token" },
+      });
+      expect(badAuth.statusCode).toBe(401);
+    });
+
+    it("POST /api/share creates a link for the owning user", async () => {
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      const share = await app.inject({
+        method: "POST",
+        url: "/api/share",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { tenantId: "t_test123", label: "demo" },
+      });
+      expect(share.statusCode).toBe(201);
+      const body = share.json() as { id: string; url: string };
+      expect(body.id).toBe("shr_test123");
+      expect(body.url).toBe("/share/shr_test123");
+    });
+
+    it("POST /api/share rejects unauthenticated requests with 401", async () => {
+      const share = await app.inject({
+        method: "POST",
+        url: "/api/share",
+        payload: { tenantId: "t_test123" },
+      });
+      expect(share.statusCode).toBe(401);
     });
   });
 
