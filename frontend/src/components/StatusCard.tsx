@@ -3,7 +3,10 @@ import type { LucideIcon } from "lucide-react";
 
 export type StatusLevel = "emerald" | "amber" | "rose";
 
-const LEVEL_STYLES: Record<StatusLevel, { text: string; shadow: string; border: string }> = {
+export const LEVEL_STYLES: Record<
+  StatusLevel,
+  { text: string; shadow: string; border: string }
+> = {
   emerald: { text: "text-emerald-300", shadow: "shadow-glow-emerald", border: "border-emerald-500/30" },
   amber: { text: "text-amber-300", shadow: "shadow-glow-amber", border: "border-amber-500/30" },
   rose: { text: "text-rose-300", shadow: "shadow-glow-rose", border: "border-rose-500/30" },

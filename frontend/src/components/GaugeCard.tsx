@@ -1,6 +1,6 @@
 import { PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
-import type { StatusLevel } from "./StatusCard";
+import { LEVEL_STYLES, type StatusLevel } from "./StatusCard";
 
 const LEVEL_COLORS: Record<StatusLevel, string> = {
   emerald: "#34d399",
@@ -24,13 +24,14 @@ export function GaugeCard({ title, percent, level }: GaugeCardProps): JSX.Elemen
   const resolved = level ?? levelFor(percent);
   const clamped = Math.max(0, Math.min(100, percent));
   const data = [{ name: title, value: clamped, fill: LEVEL_COLORS[resolved] }];
+  const chrome = LEVEL_STYLES[resolved];
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3 }}
-      className="glass-card p-5"
+      className={`glass-card p-5 ${chrome.border} ${chrome.shadow}`}
       data-testid="gauge-card"
     >
       <span className="text-xs uppercase tracking-wider text-zinc-400">{title}</span>
