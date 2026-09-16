@@ -16,6 +16,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ConnectResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failedOnce, setFailedOnce] = useState(false);
 
   async function handleSubmit(event: FormEvent): Promise<void> {
     event.preventDefault();
@@ -26,9 +27,13 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
       const response = await connectTenant(tenantId, prometheusUrl, authToken || undefined);
       setResult(response);
       if (response.ok) {
+        setFailedOnce(false);
         onConnected(tenantId);
+      } else {
+        setFailedOnce(true);
       }
     } catch (err) {
+      setFailedOnce(true);
       setError(err instanceof Error ? err.message : "Connection failed");
     } finally {
       setSubmitting(false);
@@ -110,6 +115,19 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
         {submitting ? "Connecting…" : "Connect"}
       </button>
 
+      {failedOnce ? (
+        <button
+          type="button"
+          className="mt-2 w-full text-center text-xs text-zinc-500 underline-offset-2 transition hover:text-zinc-300 hover:underline"
+          onClick={() => {
+            setPrometheusUrl("https://prometheus.demo.prometheus.io");
+            setAuthToken("");
+          }}
+        >
+          Try the public demo Prometheus
+        </button>
+      ) : null}
+
       {result !== null && (
         <div
           className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
@@ -144,9 +162,16 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
         </div>
       )}
       {error !== null && (
-        <p className="mt-3 text-xs text-rose-300" role="alert">
-          {error}
-        </p>
+        <div className="mt-3" role="alert">
+          <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            {error}
+          </p>
+          <p className="mt-1.5 text-[11px] text-zinc-500">
+            Double-check the URL and that it's reachable from the internet —
+            private/internal hostnames can't be reached. Need data fast? Use the
+            demo link below.
+          </p>
+        </div>
       )}
     </motion.form>
   );
