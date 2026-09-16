@@ -49,7 +49,7 @@ export function ConnectForm({ onConnected }: ConnectFormProps): JSX.Element {
       <div className="flex items-center gap-2">
         <Plug className="h-4 w-4 text-emerald-300" aria-hidden />
         <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
-          Connect Prometheus
+          Connect your monitoring stack
         </h2>
       </div>
 
@@ -70,7 +70,7 @@ export function ConnectForm({ onConnected }: ConnectFormProps): JSX.Element {
         </div>
         <div>
           <label htmlFor="prometheusUrl" className="mb-1 block text-xs text-zinc-400">
-            Prometheus URL
+            Prometheus or Grafana URL <span className="text-zinc-600">(auto-detected)</span>
           </label>
           <input
             id="prometheusUrl"
@@ -78,13 +78,13 @@ export function ConnectForm({ onConnected }: ConnectFormProps): JSX.Element {
             className={inputClass}
             value={prometheusUrl}
             onChange={(e) => setPrometheusUrl(e.target.value)}
-            placeholder="https://prometheus.example.com"
+            placeholder="https://prometheus.example.com or https://grafana.example.com"
             required
           />
         </div>
         <div>
           <label htmlFor="authToken" className="mb-1 block text-xs text-zinc-400">
-            Auth token <span className="text-zinc-600">(optional, encrypted at rest)</span>
+            Auth token <span className="text-zinc-600">(optional — Prometheus bearer or Grafana service-account token, encrypted at rest)</span>
           </label>
           <input
             id="authToken"

@@ -3,15 +3,28 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { getEnv } from "../config/env.js";
 
 /**
- * Lightweight HMAC-signed tenant authentication (JWT-shaped without the
- * external dependency). Signed with JWT_SECRET; used to bind requests to a
- * tenant identity.
+ * HMAC-signed session tokens (JWT-shaped, no external dependency).
+ * Two token types:
+ *  - user tokens: { sub: userId, email, exp } — login sessions
+ *  - legacy tenant tokens: { tenantId, issuedAt } — kept for API compat
  */
+
+export interface UserClaims {
+  sub: string;
+  email: string;
+  exp: number;
+  type: "user";
+}
 
 export interface TenantClaims {
   tenantId: string;
   issuedAt: number;
+  type: "tenant";
 }
+
+export type SessionClaims = UserClaims | TenantClaims;
+
+const USER_TOKEN_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
 
 function base64UrlEncode(input: string | Buffer): string {
   return Buffer.from(input)
@@ -33,14 +46,24 @@ function sign(data: string): string {
   );
 }
 
-export function issueTenantToken(tenantId: string): string {
-  const claims: TenantClaims = { tenantId, issuedAt: Date.now() };
+export function issueUserToken(userId: string, email: string): string {
+  const claims: UserClaims = {
+    sub: userId,
+    email,
+    exp: Date.now() + USER_TOKEN_TTL_MS,
+    type: "user",
+  };
   const payload = base64UrlEncode(JSON.stringify(claims));
-  const signature = sign(payload);
-  return `${payload}.${signature}`;
+  return `${payload}.${sign(payload)}`;
 }
 
-export function verifyTenantToken(token: string): TenantClaims | null {
+export function issueTenantToken(tenantId: string): string {
+  const claims: TenantClaims = { tenantId, issuedAt: Date.now(), type: "tenant" };
+  const payload = base64UrlEncode(JSON.stringify(claims));
+  return `${payload}.${sign(payload)}`;
+}
+
+export function verifyToken(token: string): SessionClaims | null {
   const parts = token.split(".");
   if (parts.length !== 2) {
     return null;
@@ -53,7 +76,16 @@ export function verifyTenantToken(token: string): TenantClaims | null {
     return null;
   }
   try {
-    const claims = JSON.parse(base64UrlDecode(payload)) as TenantClaims;
+    const claims = JSON.parse(base64UrlDecode(payload)) as SessionClaims;
+    if (claims.type === "user") {
+      if (typeof claims.sub !== "string" || typeof claims.exp !== "number") {
+        return null;
+      }
+      if (claims.exp < Date.now()) {
+        return null; // expired
+      }
+      return claims;
+    }
     if (typeof claims.tenantId !== "string" || typeof claims.issuedAt !== "number") {
       return null;
     }
@@ -63,40 +95,57 @@ export function verifyTenantToken(token: string): TenantClaims | null {
   }
 }
 
+/** Back-compat wrapper. */
+export function verifyTenantToken(token: string): TenantClaims | null {
+  const claims = verifyToken(token);
+  return claims !== null && claims.type === "tenant" ? claims : null;
+}
+
 export interface AuthedRequest extends FastifyRequest {
+  userId?: string;
+  email?: string;
   tenantId?: string;
 }
 
 /**
- * Extracts the tenant identity from `Authorization: Bearer <token>` or the
- * `x-tenant-id` header (dev convenience). Falls back to the body/query param.
+ * Extracts and verifies the session from `Authorization: Bearer <token>`.
+ * Populates request.userId/email for user tokens.
  */
-export function resolveTenantId(
-  request: FastifyRequest,
-  fallback?: string
-): string | null {
+export function resolveSession(request: FastifyRequest): SessionClaims | null {
   const authHeader = request.headers.authorization;
   if (authHeader !== undefined && authHeader.startsWith("Bearer ")) {
-    const claims = verifyTenantToken(authHeader.slice(7));
-    if (claims !== null) {
-      return claims.tenantId;
-    }
+    return verifyToken(authHeader.slice(7));
   }
-  const headerTenant = request.headers["x-tenant-id"];
-  if (typeof headerTenant === "string" && headerTenant.length > 0) {
-    return headerTenant;
+  return null;
+}
+
+export async function requireUser(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<UserClaims | null> {
+  const claims = resolveSession(request);
+  if (claims === null || claims.type !== "user") {
+    await reply.code(401).send({ error: "Authentication required" });
+    return null;
   }
-  return fallback ?? null;
+  (request as AuthedRequest).userId = claims.sub;
+  (request as AuthedRequest).email = claims.email;
+  return claims;
 }
 
 export async function requireTenant(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<string | null> {
-  const tenantId = resolveTenantId(request);
-  if (tenantId === null) {
+  const claims = resolveSession(request);
+  if (claims === null) {
     await reply.code(401).send({ error: "Missing tenant identity" });
     return null;
   }
-  return tenantId;
+  if (claims.type === "user") {
+    // User sessions resolve to their owned tenant implicitly via ownership checks.
+    (request as AuthedRequest).userId = claims.sub;
+    return claims.sub;
+  }
+  return claims.tenantId;
 }
