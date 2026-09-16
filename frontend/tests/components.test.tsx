@@ -197,13 +197,16 @@ describe("DashboardView", () => {
     expect(screen.queryByTestId("share-button")).not.toBeInTheDocument();
   });
 
-  it("shows the share button for signed-in sessions and creates a link", async () => {
+  it("shows the share button for signed-in sessions and creates a link via the dialog", async () => {
     localStorage.setItem("passthrough.token", "t");
     const shareResponse = {
       id: "abc123",
       url: "/share/abc123",
       label: "default",
       createdAt: new Date().toISOString(),
+      access: "anyone_view",
+      invited: [],
+      skipped: [],
     };
     vi.stubGlobal(
       "fetch",
@@ -219,11 +222,17 @@ describe("DashboardView", () => {
       })
     );
     renderDashboard("team-9");
-    const button = await screen.findByTestId("share-button");
-    await userEvent.setup().click(button);
+    await screen.findByTestId("share-button");
+    await userEvent.setup().click(screen.getByTestId("share-button"));
+    // Dialog opens → create with defaults (anyone · view).
     await waitFor(() => {
-      expect(screen.getByRole("status")).toHaveTextContent("/share/abc123");
+      expect(screen.getByTestId("share-dialog")).toBeInTheDocument();
     });
+    await userEvent.setup().click(screen.getByRole("button", { name: /create share link/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("copy-share-link")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/\/share\/abc123/)).toBeInTheDocument();
     localStorage.removeItem("passthrough.token");
   });
 });

@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
-import { Radio, Link2Off } from "lucide-react";
+import { Radio, Link2Off, Lock } from "lucide-react";
 import { motion } from "framer-motion";
-import { fetchShareView, type ShareViewPayload } from "../lib/api";
+import {
+  fetchShareAccessToken,
+  fetchShareView,
+  type ShareViewPayload,
+} from "../lib/api";
 import { HealthBadge } from "./HealthBadge";
 import { StatusCard } from "./StatusCard";
 import { GaugeCard } from "./GaugeCard";
@@ -16,18 +20,40 @@ import type { MetricSeries } from "../hooks/types";
 export function ShareView({ id }: { id: string }): JSX.Element {
   const [data, setData] = useState<ShareViewPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [restricted, setRestricted] = useState(false);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load(): Promise<void> {
       try {
-        const payload = await fetchShareView(id);
+        // Email-restricted links: exchange the signed-in session for a
+        // short-lived view token once, then attach it to snapshot fetches.
+        let token = accessToken;
+        if (token === null) {
+          try {
+            const access = await fetchShareAccessToken(id);
+            if (!cancelled) {
+              setAccessToken(access.token);
+            }
+            token = access.token;
+          } catch {
+            // Signed out or not allow-listed — the view fetch decides below.
+          }
+        }
+        const payload = await fetchShareView(id, token ?? undefined);
         if (!cancelled) {
           setData(payload);
+          setRestricted(false);
         }
       } catch (err) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load share view");
+          const message = err instanceof Error ? err.message : "Failed to load share view";
+          if (/restricted|allow-list|403/i.test(message)) {
+            setRestricted(true);
+          } else {
+            setError(message);
+          }
         }
       }
     }
@@ -38,6 +64,8 @@ export function ShareView({ id }: { id: string }): JSX.Element {
       cancelled = true;
       window.clearInterval(timer);
     };
+    // accessToken intentionally omitted: refresh it only on remount (1h TTL).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   if (error !== null) {
@@ -46,6 +74,25 @@ export function ShareView({ id }: { id: string }): JSX.Element {
         <Link2Off className="h-8 w-8 text-rose-400" aria-hidden />
         <h1 className="text-lg font-semibold">Share link unavailable</h1>
         <p className="max-w-sm text-sm text-zinc-400">{error}</p>
+      </div>
+    );
+  }
+
+  if (restricted) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 p-4 text-center">
+        <Lock className="h-8 w-8 text-amber-300" aria-hidden />
+        <h1 className="text-lg font-semibold">This dashboard is restricted</h1>
+        <p className="max-w-sm text-sm text-zinc-400">
+          Only allow-listed email addresses can open this share. Sign in with an
+          invited address and reload this page.
+        </p>
+        <a
+          href="/login"
+          className="rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
+        >
+          Sign in
+        </a>
       </div>
     );
   }

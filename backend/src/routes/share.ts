@@ -5,15 +5,33 @@ import {
   createShareLink,
   getShareLink,
   listShareLinks,
+  recordInvitedEmails,
   revokeShareLink,
   tenantOwnedBy,
+  type ShareAccess,
 } from "../db/users.js";
 import { instantQuery, rangeQuery } from "../services/prometheus.js";
 import { DEFAULT_PUBLIC_QUERIES } from "../services/publicQueries.js";
+import { sendShareInvite } from "../services/email.js";
+import { signViewToken, verifyViewToken } from "../services/shareTokens.js";
+
+const accessSchema = z.enum([
+  "anyone_view",
+  "anyone_edit",
+  "email_view",
+  "email_edit",
+]);
 
 const createSchema = z.object({
   tenantId: z.string().min(1).max(128),
   label: z.string().min(1).max(64).optional(),
+  access: accessSchema.optional(),
+  allowedEmails: z.array(z.string().email().max(254)).max(50).optional(),
+  invite: z.boolean().optional(),
+});
+
+const inviteSchema = z.object({
+  emails: z.array(z.string().email().max(254)).min(1).max(50),
 });
 
 export interface ShareViewHost {
@@ -46,6 +64,8 @@ export interface ShareViewPayload {
     networkTxSeries: ShareSeries[];
   };
   generatedAt: string;
+  access: ShareAccess;
+  canEdit: boolean;
 }
 
 function scalarFrom(result: unknown[]): number | null {
@@ -84,21 +104,47 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
     if (!parsed.success) {
       return reply.code(400).send({ error: "Invalid request body" });
     }
-    const { tenantId, label } = parsed.data;
+    const { tenantId, label, access, allowedEmails, invite } = parsed.data;
     const owned = await tenantOwnedBy(tenantId, user.sub);
     if (!owned) {
       return reply.code(403).send({ error: "You do not own this tenant" });
+    }
+    if ((access ?? "anyone_view").startsWith("email") && (allowedEmails ?? []).length === 0) {
+      return reply
+        .code(400)
+        .send({ error: "Email-restricted shares need at least one allowed email" });
     }
     const link = await createShareLink({
       tenantId,
       createdBy: user.sub,
       label: label ?? "default",
+      access: access as ShareAccess | undefined,
+      allowedEmails,
     });
+
+    let invited: string[] = [];
+    if (invite === true && (allowedEmails ?? []).length > 0) {
+      const origin = request.headers.origin ?? "";
+      const emailResult = await sendShareInvite({
+        to: allowedEmails as string[],
+        shareUrl: `${origin}/share/${link.id}`,
+        label: link.label ?? "dashboard",
+        canEdit: (access ?? "anyone_view").endsWith("edit"),
+      });
+      if (emailResult.sent.length > 0) {
+        await recordInvitedEmails(link.id, emailResult.sent);
+        invited = emailResult.sent;
+      }
+    }
+
     return reply.code(201).send({
       id: link.id,
       url: `/share/${link.id}`,
       label: link.label,
       createdAt: link.created_at,
+      access: link.access,
+      allowedEmails: link.allowed_emails,
+      invited,
     });
   });
 
@@ -125,6 +171,9 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
         url: `/share/${link.id}`,
         label: link.label,
         createdAt: link.created_at,
+        access: link.access,
+        allowedEmails: link.allowed_emails,
+        invitedEmails: link.invited_emails,
       })),
     });
   });
@@ -139,11 +188,66 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(revoked ? 200 : 404).send({ revoked });
   });
 
-  // Public, unauthenticated read-only view — the "shareable link" target.
-  app.get<{ Params: { id: string } }>("/api/share/:id/view", async (request, reply) => {
+  // (Re)send invite emails for an existing link (owner only).
+  app.post<{ Params: { id: string }; Body: unknown }>(
+    "/api/share/:id/invite",
+    async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (user === null) {
+        return reply;
+      }
+      const parsed = inviteSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "Provide 1–50 valid emails" });
+      }
+      const link = await getShareLink(request.params.id);
+      if (link === null || link.revoked) {
+        return reply.code(404).send({ error: "Share link not found or revoked" });
+      }
+      const owned = await tenantOwnedBy(link.tenant_id, user.sub);
+      if (!owned) {
+        return reply.code(403).send({ error: "You do not own this tenant" });
+      }
+      const origin = request.headers.origin ?? "";
+      const result = await sendShareInvite({
+        to: parsed.data.emails,
+        shareUrl: `${origin}/share/${link.id}`,
+        label: link.label ?? "dashboard",
+        canEdit: link.access.endsWith("edit"),
+      });
+      if (result.sent.length > 0) {
+        await recordInvitedEmails(link.id, result.sent);
+      }
+      return reply.code(200).send({
+        sent: result.sent,
+        failed: result.failed,
+        reason: result.reason,
+      });
+    }
+  );
+
+  // Public view — unauthenticated, but email-restricted links must prove
+  // access via a short-lived signed view token (issued below).
+  app.get<{ Params: { id: string }; Querystring: { email?: string; token?: string } }>(
+    "/api/share/:id/view",
+    async (request, reply) => {
     const link = await getShareLink(request.params.id);
     if (link === null || link.revoked) {
       return reply.code(404).send({ error: "Share link not found or revoked" });
+    }
+    if (link.access.startsWith("email")) {
+      const email = request.query.email?.toLowerCase() ?? "";
+      const token = request.query.token ?? "";
+      const allowed = link.allowed_emails.includes(email);
+      const bearer = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+      const tokenOk =
+        (token.length > 0 && verifyViewToken(link.id, email, token)) ||
+        (bearer.length > 0 && verifyViewToken(link.id, email, bearer));
+      if (!allowed || !tokenOk) {
+        return reply.code(403).send({
+          error: "This share is restricted — sign in with an allowed email",
+        });
+      }
     }
 
     const metrics: ShareViewPayload["metrics"] = {
@@ -201,7 +305,35 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       createdAt: link.created_at.toISOString(),
       metrics,
       generatedAt: new Date().toISOString(),
+      access: link.access,
+      canEdit: link.access.endsWith("edit"),
     };
     return reply.code(200).send(payload);
+  }
+  );
+
+  /**
+   * POST /api/share/:id/access-token — exchange a signed-in session for a
+   * short-lived view token bound to the user's email. Email-restricted share
+   * views call this first, then pass the token with every snapshot fetch.
+   */
+  app.post<{ Params: { id: string } }>("/api/share/:id/access-token", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (user === null) {
+      return reply;
+    }
+    const link = await getShareLink(request.params.id);
+    if (link === null || link.revoked) {
+      return reply.code(404).send({ error: "Share link not found or revoked" });
+    }
+    const email = user.email.toLowerCase();
+    if (!link.allowed_emails.includes(email)) {
+      return reply.code(403).send({ error: "This email is not on the allow-list" });
+    }
+    return reply.code(200).send({
+      token: signViewToken(link.id, email),
+      email,
+      canEdit: link.access.endsWith("edit"),
+    });
   });
 }

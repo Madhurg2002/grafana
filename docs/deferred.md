@@ -20,6 +20,8 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Paste-friendly upstream input | ✅ | `normalizeUpstreamInput`: bare `ip:port` gets `http://`, Grafana dashboard links (`/d/<uid>/slug?orgId=1`) truncate to the mount prefix, whitespace/slashes stripped. |
 | User accounts (signup/login/me, scrypt + HMAC sessions) | ✅ | `routes/auth.ts`; uniform login errors; 7-day tokens |
 | Shareable read-only links | ✅ | `routes/share.ts`; owner-only management + public snapshot view |
+| Share access control (audience × right) | ✅ | Migration 006 `access` enum: anyone-with-link or email allow-list × view or edit. Email-restricted views require a signed 1h view token bound to share+email (`shareTokens.ts`, timing-safe). Invite emails via Resend (`RESEND_API_KEY` optional — falls back to copy-link). |
+| Edit-access enforcement depth | 🔶 | `canEdit` is delivered to the client and gates UI affordances; write endpoints (panels/connect) still require the owner's session token — a non-owner with an edit share cannot actually mutate yet. Full collaborator write-path deferred. |
 | Route enforcement of tenant auth on query/stream | ⏳ | `requireTenant`/`requireUser` exist but `/api/query`, `/api/query_range`, `/api/stream` still accept a bare `tenantId` (any caller who guesses an ID can read its metrics). Enforcement was deferred to keep the no-account connect flow working — wire in a signed token or per-tenant API key. |
 | Live Prometheus integration tests (real upstream) | ⏳ | Upstream calls mocked in Vitest; normalizer verified directly. A `TEST_PROMETHEUS_URL`-gated suite would close this. |
 | `render.yaml` infra validation | ⏳ | Spec written for Render (web + static + Postgres, generated secrets); actual deploy is dashboard-configured instead. |

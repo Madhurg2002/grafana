@@ -157,17 +157,41 @@ export function login(email: string, password: string): Promise<AuthResponse> {
   return postJson<AuthResponse>("/api/auth/login", { email, password });
 }
 
+export type ShareAccess =
+  | "anyone_view"
+  | "anyone_edit"
+  | "email_view"
+  | "email_edit";
+
 export interface ShareLink {
   id: string;
   url: string;
   label: string;
   createdAt: string;
+  access?: ShareAccess;
+  allowedEmails?: string[];
+  invited?: string[];
+  skipped?: string[];
 }
 
-export function createShareLink(tenantId: string, label?: string): Promise<ShareLink> {
+export function createShareLink(
+  tenantId: string,
+  label?: string,
+  access?: ShareAccess,
+  allowedEmails?: string[],
+  invite?: boolean
+): Promise<ShareLink> {
   return authedJson<ShareLink>("/api/share", {
     method: "POST",
-    body: JSON.stringify({ tenantId, ...(label !== undefined ? { label } : {}) }),
+    body: JSON.stringify({
+      tenantId,
+      ...(label !== undefined ? { label } : {}),
+      ...(access !== undefined ? { access } : {}),
+      ...(allowedEmails !== undefined && allowedEmails.length > 0
+        ? { allowedEmails }
+        : {}),
+      ...(invite === true ? { invite: true } : {}),
+    }),
   });
 }
 
@@ -185,10 +209,22 @@ export interface ShareViewPayload {
     networkTxSeries: Array<{ label: string; points: Array<{ timestamp: number; value: number }> }>;
   };
   generatedAt: string;
+  access?: ShareAccess;
+  canEdit?: boolean;
 }
 
-export function fetchShareView(id: string): Promise<ShareViewPayload> {
-  return authedJson<ShareViewPayload>(`/api/share/${encodeURIComponent(id)}/view`);
+export function fetchShareView(id: string, viewToken?: string): Promise<ShareViewPayload> {
+  return authedJson<ShareViewPayload>(
+    `/api/share/${encodeURIComponent(id)}/view`,
+    viewToken !== undefined ? { headers: { authorization: `Bearer ${viewToken}` } } : {}
+  );
+}
+
+export function fetchShareAccessToken(id: string): Promise<{ token: string; email: string; canEdit: boolean }> {
+  return authedJson<{ token: string; email: string; canEdit: boolean }>(
+    `/api/share/${encodeURIComponent(id)}/access-token`,
+    { method: "POST" }
+  );
 }
 
 // ---------------------------------------------------------------------------

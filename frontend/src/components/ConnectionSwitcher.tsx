@@ -174,7 +174,9 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
               <input
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://prometheus or grafana URL"
+                type="text"
+                inputMode="url"
+                placeholder="10.0.0.5:9090 or https://prom.example.com"
                 className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
               />
               <input

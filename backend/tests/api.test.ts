@@ -223,13 +223,32 @@ describe("API routes (app.inject)", () => {
       expect(response.statusCode).toBe(400);
     });
 
-    it("rejects non-http URLs", async () => {
+    it("rejects non-http schemes", async () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/connect",
-        payload: { tenantId: "t", prometheusUrl: "ftp://files.example.com" },
+        payload: { tenantId: "t", prometheusUrl: "s3://bucket.internal" },
       });
       expect(response.statusCode).toBe(400);
+    });
+
+    it("rejects garbage strings", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/connect",
+        payload: { tenantId: "t", prometheusUrl: "not a url at all!!" },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("accepts bare ip:port input (http:// added by the normalizer)", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/connect",
+        payload: { tenantId: "t", prometheusUrl: "10.0.0.5:9090" },
+      });
+      // Detection is mocked upstream; the schema must NOT 400 on ip:port.
+      expect(response.statusCode).toBe(200);
     });
   });
 

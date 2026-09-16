@@ -19,13 +19,31 @@ import { detectUpstream } from "../services/upstream.js";
 
 const connectSchema = z.object({
   tenantId: z.string().min(1).max(128),
-  /** Prometheus URL OR a Grafana URL — auto-detected. */
+  /**
+   * Prometheus/Grafana URL — bare `host:port` (e.g. 10.0.0.5:9090) is also
+   * accepted; `normalizeUpstreamInput` adds http:// before detection.
+   */
   prometheusUrl: z
     .string()
-    .url()
-    .refine((url) => url.startsWith("http://") || url.startsWith("https://"), {
-      message: "prometheusUrl must be an http(s) URL",
-    }),
+    .min(4, "prometheusUrl is required")
+    .max(2048)
+    .refine(
+      (url) => {
+        const value = url.trim();
+        if (value.length === 0 || /\s/.test(value)) {
+          return false;
+        }
+        const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//.exec(value);
+        if (schemeMatch !== null) {
+          // Only http(s) schemes are ever proxied.
+          const scheme = schemeMatch[1].toLowerCase();
+          return scheme === "http" || scheme === "https";
+        }
+        // Scheme-less: host[:port][/path] — the normalizer adds http://.
+        return /^[^\s/@]+(:[0-9]{2,5})?(\/.*)?$/.test(value);
+      },
+      { message: "Enter a URL like https://prom.example.com or 10.0.0.5:9090" }
+    ),
   /** Bearer token for Prometheus, or a Grafana service-account token. */
   authToken: z.string().max(4096).optional(),
   /** Explicit override; omitted = auto-detect. */
