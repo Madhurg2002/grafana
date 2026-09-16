@@ -34,6 +34,11 @@ export interface QueryRangeRequest extends QueryRequest {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "";
 
+/** Base URL of the backend API (empty in dev — Vite proxy handles /api). */
+export function apiBase(): string {
+  return API_BASE.replace(/\/$/, "");
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
