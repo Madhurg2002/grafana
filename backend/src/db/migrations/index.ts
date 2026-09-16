@@ -1,4 +1,6 @@
 import type { Migration } from "./runner.js";
+import { M003 } from "./003-users.js";
+import { M004 } from "./004-upstream-type.js";
 
 /**
  * Ordered, immutable migrations. Once applied, a migration's SQL MUST NOT be
@@ -56,4 +58,6 @@ CREATE TRIGGER trg_prometheus_connections_updated_at
 export const MIGRATIONS: Migration[] = [
   { name: "001_core_tables", sql: M001_CORE_TABLES },
   { name: "002_indexes_and_triggers", sql: M002_INDEXES_AND_TRIGGERS },
+  M003,
+  M004,
 ];

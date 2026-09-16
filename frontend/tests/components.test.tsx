@@ -7,6 +7,7 @@ import { GaugeCard } from "../src/components/GaugeCard";
 import { SparkLineCard } from "../src/components/SparkLineCard";
 import { ConnectForm } from "../src/components/ConnectForm";
 import { DashboardView } from "../src/components/DashboardView";
+import { AuthProvider } from "../src/hooks/useAuth";
 import type { MetricSeries } from "../src/hooks/types";
 
 // jsdom lacks EventSource — stub it.
@@ -136,7 +137,7 @@ describe("ConnectForm", () => {
     render(<ConnectForm onConnected={onConnected} />);
 
     await user.type(screen.getByLabelText(/tenant id/i), "team-1");
-    await user.type(screen.getByLabelText(/prometheus url/i), "https://prom.example.com");
+    await user.type(screen.getByLabelText(/prometheus or grafana url/i), "https://prom.example.com");
     await user.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() => {
@@ -156,7 +157,7 @@ describe("ConnectForm", () => {
     render(<ConnectForm onConnected={onConnected} />);
 
     await user.type(screen.getByLabelText(/tenant id/i), "team-1");
-    await user.type(screen.getByLabelText(/prometheus url/i), "https://prom.example.com");
+    await user.type(screen.getByLabelText(/prometheus or grafana url/i), "https://prom.example.com");
     await user.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() => {
@@ -167,16 +168,136 @@ describe("ConnectForm", () => {
 });
 
 describe("DashboardView", () => {
+  function renderDashboard(tenantId: string): void {
+    render(
+      <AuthProvider>
+        <DashboardView tenantId={tenantId} />
+      </AuthProvider>
+    );
+  }
+
   it("renders the header with tenant and health badge", async () => {
-    render(<DashboardView tenantId="team-9" />);
+    renderDashboard("team-9");
     expect(screen.getByText(/tenant: team-9/i)).toBeInTheDocument();
     expect(screen.getByTestId("health-badge")).toBeInTheDocument();
   });
 
   it("subscribes to the SSE stream for the tenant", async () => {
-    render(<DashboardView tenantId="team-9" />);
+    renderDashboard("team-9");
     await waitFor(() => {
       expect(MockEventSource.lastInstance?.url).toContain("/api/stream?tenantId=team-9");
     });
+  });
+
+  it("hides the share button for anonymous sessions", async () => {
+    renderDashboard("team-9");
+    await waitFor(() => {
+      expect(MockEventSource.lastInstance?.url).toContain("/api/stream");
+    });
+    expect(screen.queryByTestId("share-button")).not.toBeInTheDocument();
+  });
+
+  it("shows the share button for signed-in sessions and creates a link", async () => {
+    localStorage.setItem("passthrough.token", "t");
+    const shareResponse = {
+      id: "abc123",
+      url: "/share/abc123",
+      label: "default",
+      createdAt: new Date().toISOString(),
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/share")) {
+          return new Response(JSON.stringify(shareResponse), { status: 201 });
+        }
+        return new Response(
+          JSON.stringify({ resultType: "vector", result: [], cached: false, query: "up" }),
+          { status: 200 }
+        );
+      })
+    );
+    renderDashboard("team-9");
+    const button = await screen.findByTestId("share-button");
+    await userEvent.setup().click(button);
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("/share/abc123");
+    });
+    localStorage.removeItem("passthrough.token");
+  });
+});
+
+describe("ShareView", () => {
+  it("renders metrics from the share snapshot", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            tenantId: "team-9",
+            label: "demo",
+            createdAt: new Date().toISOString(),
+            metrics: {
+              hosts: [{ instance: "h1", job: "node", up: 1 }],
+              hostsUp: 1,
+              hostsTotal: 1,
+              cpuPercent: 21.5,
+              ramPercent: 44,
+            },
+            generatedAt: new Date().toISOString(),
+          }),
+          { status: 200 }
+        )
+      )
+    );
+    const { ShareView } = await import("../src/components/ShareView");
+    render(<ShareView id="abc123" />);
+    expect(await screen.findByText("21.5%")).toBeInTheDocument();
+    expect(screen.getByText("44.0%")).toBeInTheDocument();
+    expect(screen.getByText("h1")).toBeInTheDocument();
+  });
+
+  it("shows an error state for revoked links", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: "Share link not found or revoked" }), { status: 404 })
+      )
+    );
+    const { ShareView } = await import("../src/components/ShareView");
+    render(<ShareView id="gone" />);
+    expect(await screen.findByText(/share link unavailable/i)).toBeInTheDocument();
+  });
+});
+
+describe("AuthForm", () => {
+  it("submits signup and stores the session", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            token: "tok",
+            user: { id: "u1", email: "a@b.c", displayName: "A", tenantId: "t1" },
+          }),
+          { status: 201 }
+        )
+      )
+    );
+    const { AuthForm } = await import("../src/components/AuthForm");
+    render(
+      <AuthProvider>
+        <AuthForm initialMode="signup" />
+      </AuthProvider>
+    );
+    await user.type(screen.getByLabelText(/email/i), "a@b.c");
+    await user.type(screen.getByLabelText(/^password/i), "password123");
+    await user.click(screen.getByRole("button", { name: /create account/i }));
+    await waitFor(() => {
+      expect(localStorage.getItem("passthrough.token")).toBe("tok");
+    });
+    localStorage.removeItem("passthrough.token");
   });
 });

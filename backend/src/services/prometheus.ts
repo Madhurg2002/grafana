@@ -261,16 +261,37 @@ function toCacheKey(prefix: string, tenantId: string, params: URLSearchParams): 
   return `${prefix}:${tenantId}:${params.toString()}`;
 }
 
-async function loadAuthHeader(tenantId: string): Promise<string | null> {
+interface TenantUpstream {
+  authHeader: string | null;
+  baseUrl: string;
+}
+
+/** Resolves the per-tenant upstream: stored URL (Prometheus or Grafana proxy) + token. */
+async function resolveTenantUpstream(tenantId: string): Promise<TenantUpstream> {
   const connection = await getConnection(tenantId);
-  if (connection === null || connection.auth_token_encrypted === null) {
-    return null;
+  if (connection === null) {
+    throw new PrometheusClientError(
+      `No Prometheus connection for tenant "${tenantId}" — connect first via /api/connect`,
+      409
+    );
   }
-  const token = decryptToken(
-    connection.auth_token_encrypted,
-    process.env.ENCRYPTION_KEY
-  );
-  return `Bearer ${token}`;
+  const authHeader =
+    connection.auth_token_encrypted === null
+      ? null
+      : `Bearer ${decryptToken(
+          connection.auth_token_encrypted,
+          process.env.ENCRYPTION_KEY
+        )}`;
+  // Fallback: deployments predating per-tenant URLs use the env default.
+  const baseUrl =
+    connection.prometheus_url ?? process.env.PROMETHEUS_BASE_URL ?? "";
+  if (baseUrl.length === 0) {
+    throw new PrometheusClientError(
+      "No upstream URL configured for this tenant or deployment",
+      500
+    );
+  }
+  return { authHeader, baseUrl: baseUrl.replace(/\/$/, "") };
 }
 
 async function promRequest(
@@ -278,13 +299,7 @@ async function promRequest(
   params: URLSearchParams,
   tenantId: string
 ): Promise<PromResponse> {
-  const baseUrl = process.env.PROMETHEUS_BASE_URL ?? "";
-  if (baseUrl.length === 0) {
-    throw new PrometheusClientError(
-      "PROMETHEUS_BASE_URL is not configured for this deployment",
-      500
-    );
-  }
+  const upstream = await resolveTenantUpstream(tenantId);
 
   const breaker = getCircuitBreaker();
   try {
@@ -292,11 +307,10 @@ async function promRequest(
       const headers: Record<string, string> = {
         accept: "application/json",
       };
-      const auth = await loadAuthHeader(tenantId);
-      if (auth !== null) {
-        headers.authorization = auth;
+      if (upstream.authHeader !== null) {
+        headers.authorization = upstream.authHeader;
       }
-      const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+      const url = `${upstream.baseUrl}${path}`;
       const response = await request(url, {
         method: "GET",
         headers,
