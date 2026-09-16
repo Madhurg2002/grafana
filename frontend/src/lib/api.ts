@@ -17,7 +17,17 @@ export interface ConnectResponse {
   tenantId: string;
   status: "connected" | "error";
   latencyMs: number;
+  upstreamType?: "prometheus" | "grafana";
+  detail?: string;
   error?: string;
+}
+
+export interface ConnectionInfo {
+  tenantId: string;
+  status: "connected" | "error" | "unknown";
+  upstreamType: "prometheus" | "grafana";
+  upstreamHost: string | null;
+  updatedAt: string;
 }
 
 export interface QueryRequest {
@@ -62,6 +72,12 @@ export function connectTenant(
     prometheusUrl,
     ...(authToken !== undefined && authToken.length > 0 ? { authToken } : {}),
   });
+}
+
+export function fetchConnectionInfo(tenantId: string): Promise<ConnectionInfo> {
+  return authedJson<ConnectionInfo>(
+    `/api/connection/${encodeURIComponent(tenantId)}`
+  );
 }
 
 export function instantQuery(request: QueryRequest): Promise<QueryResponseBody> {

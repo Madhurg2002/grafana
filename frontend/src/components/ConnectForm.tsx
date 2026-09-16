@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Plug } from "lucide-react";
+import { Plug, BarChart3, LineChart } from "lucide-react";
 import { motion } from "framer-motion";
 import { connectTenant, type ConnectResponse } from "../lib/api";
 
@@ -107,14 +107,37 @@ export function ConnectForm({ onConnected }: ConnectFormProps): JSX.Element {
       </button>
 
       {result !== null && (
-        <p
-          className={`mt-3 text-xs ${result.ok ? "text-emerald-300" : "text-rose-300"}`}
+        <div
+          className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+            result.ok
+              ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-300"
+              : "border-rose-500/40 bg-rose-500/10 text-rose-300"
+          }`}
           role="status"
         >
-          {result.ok
-            ? `Connected in ${result.latencyMs}ms — streaming live data.`
-            : `Upstream error: ${result.error ?? "unknown"}`}
-        </p>
+          {result.ok ? (
+            <span className="flex flex-col gap-1">
+              <span className="flex items-center gap-1.5 font-semibold">
+                {result.upstreamType === "grafana" ? (
+                  <>
+                    <BarChart3 className="h-3.5 w-3.5" aria-hidden />
+                    Grafana connected — routing through its Prometheus datasource
+                  </>
+                ) : (
+                  <>
+                    <LineChart className="h-3.5 w-3.5" aria-hidden />
+                    Prometheus connected
+                  </>
+                )}
+              </span>
+              <span className="text-emerald-400/80">
+                {result.detail ?? "Streaming live data."} · {result.latencyMs}ms
+              </span>
+            </span>
+          ) : (
+            <span>Upstream error: {result.error ?? "unknown"}</span>
+          )}
+        </div>
       )}
       {error !== null && (
         <p className="mt-3 text-xs text-rose-300" role="alert">

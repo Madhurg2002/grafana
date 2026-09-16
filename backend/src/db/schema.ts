@@ -17,6 +17,8 @@ export interface ConnectionRow {
   prometheus_url: string;
   auth_token_encrypted: string | null;
   status: "connected" | "error" | "unknown";
+  /** 'prometheus' | 'grafana' — defaults to 'prometheus' for legacy rows. */
+  upstream_type?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -27,6 +29,8 @@ export interface UpsertConnectionInput {
   /** Already-encrypted payload (iv:authTag:ciphertext). */
   authTokenEncrypted: string | null;
   status: "connected" | "error" | "unknown";
+  /** Detected upstream flavor; defaults to 'prometheus'. */
+  upstreamType?: "prometheus" | "grafana";
 }
 
 const globalForPool = globalThis as unknown as { __PG_POOL__?: Pool };
@@ -100,17 +104,24 @@ export async function tenantExists(tenantId: string): Promise<boolean> {
 export async function upsertConnection(input: UpsertConnectionInput): Promise<ConnectionRow> {
   const result: QueryResult<ConnectionRow> = await getPool().query(
     `INSERT INTO prometheus_connections
-       (tenant_id, prometheus_url, auth_token_encrypted, status)
-     VALUES ($1, $2, $3, $4)
+       (tenant_id, prometheus_url, auth_token_encrypted, status, upstream_type)
+     VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (tenant_id) DO UPDATE SET
        prometheus_url = EXCLUDED.prometheus_url,
        auth_token_encrypted = COALESCE(EXCLUDED.auth_token_encrypted,
                                        prometheus_connections.auth_token_encrypted),
        status = EXCLUDED.status,
+       upstream_type = EXCLUDED.upstream_type,
        updated_at = NOW()
      RETURNING id, tenant_id, prometheus_url, auth_token_encrypted,
-               status, created_at, updated_at`,
-    [input.tenantId, input.prometheusUrl, input.authTokenEncrypted, input.status]
+               status, upstream_type, created_at, updated_at`,
+    [
+      input.tenantId,
+      input.prometheusUrl,
+      input.authTokenEncrypted,
+      input.status,
+      input.upstreamType ?? "prometheus",
+    ]
   );
   return result.rows[0];
 }
@@ -118,7 +129,7 @@ export async function upsertConnection(input: UpsertConnectionInput): Promise<Co
 export async function getConnection(tenantId: string): Promise<ConnectionRow | null> {
   const result = await getPool().query<ConnectionRow>(
     `SELECT id, tenant_id, prometheus_url, auth_token_encrypted,
-            status, created_at, updated_at
+            status, upstream_type, created_at, updated_at
      FROM prometheus_connections WHERE tenant_id = $1`,
     [tenantId]
   );
