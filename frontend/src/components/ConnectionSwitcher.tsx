@@ -98,7 +98,14 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
         className="flex items-center gap-1.5 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-600"
         aria-expanded={open}
       >
-        <span className="max-w-40 truncate">
+        <span
+          className="max-w-40 truncate"
+          title={
+            active === null
+              ? "No connection"
+              : `${active.label} — ${active.upstreamType} · ${active.upstreamHost ?? ""}`
+          }
+        >
           {active === null ? "No connection" : active.label}
         </span>
         {active !== null ? (
@@ -141,8 +148,13 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                       <span className="h-3.5 w-3.5 shrink-0" aria-hidden />
                     )}
                     <span className="min-w-0">
-                      <span className="block truncate text-xs text-zinc-200">{c.label}</span>
-                      <span className="block truncate text-[10px] text-zinc-500">
+                      <span className="block truncate text-xs text-zinc-200" title={c.label}>
+                        {c.label}
+                      </span>
+                      <span
+                        className="block truncate text-[10px] text-zinc-500"
+                        title={`${c.upstreamType === "grafana" ? "Grafana" : "Prometheus"} · ${c.upstreamHost ?? "unknown host"}`}
+                      >
                         {c.upstreamType === "grafana" ? "Grafana" : "Prometheus"} · {c.upstreamHost ?? "?"}
                       </span>
                     </span>

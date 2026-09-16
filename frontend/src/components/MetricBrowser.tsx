@@ -141,6 +141,7 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                       setSelected(metric);
                       setRowFilter("");
                     }}
+                    title={metric}
                     className={`w-full truncate rounded-md px-2 py-1 text-left font-mono text-[11px] transition ${
                       selected === metric
                         ? "bg-emerald-500/15 text-emerald-300"
@@ -203,8 +204,13 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                             className="border-t border-zinc-800/60 hover:bg-zinc-900/60"
                           >
                             {columns.map((col) => (
-                              <td key={col} className="px-2 py-1 font-mono text-zinc-300">
-                                {row[col] ?? "—"}
+                              <td
+                                key={col}
+                                className="max-w-40 truncate px-2 py-1 font-mono text-zinc-300"
+                              >
+                                <span title={row[col] ?? ""} className="block truncate">
+                                  {row[col] ?? "—"}
+                                </span>
                               </td>
                             ))}
                             <td className="px-2 py-1 text-right">

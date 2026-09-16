@@ -293,9 +293,7 @@ export function CustomPanels({ tenantId }: Props): JSX.Element | null {
             </button>
           </div>
         </div>
-      ) : null}
-
-      <div
+      ) : null}      <div
         className="mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3"
         data-testid="panel-grid"
       >

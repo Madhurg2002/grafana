@@ -119,7 +119,7 @@ function SignedInApp(): JSX.Element {
             />
           </div>
         ) : (
-          <DashboardView tenantId={tenantId} />
+          <DashboardView tenantId={tenantId} embedded />
         )}
       </main>
     </div>
