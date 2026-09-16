@@ -5,6 +5,8 @@ import { registerRateLimit } from "./middleware/rateLimit.js";
 import { connectRoutes } from "./routes/connect.js";
 import { queryRoutes } from "./routes/query.js";
 import { streamRoutes } from "./routes/stream.js";
+import { authRoutes } from "./routes/auth.js";
+import { shareRoutes } from "./routes/share.js";
 import { getCircuitBreaker } from "./services/circuitBreaker.js";
 import { healthcheck } from "./db/schema.js";
 import { bootstrapDatabase } from "./db/bootstrap.js";
@@ -48,6 +50,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(connectRoutes);
   await app.register(queryRoutes);
   await app.register(streamRoutes);
+  await app.register(authRoutes);
+  await app.register(shareRoutes);
 
   app.setErrorHandler((error, _request, reply) => {
     const statusCode = typeof error.statusCode === "number" ? error.statusCode : 500;

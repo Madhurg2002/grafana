@@ -51,6 +51,14 @@ vi.mock("../src/db/schema.js", () => ({
   ensureSchema: vi.fn(async () => undefined),
 }));
 
+vi.mock("../src/services/upstream.js", () => ({
+  detectUpstream: vi.fn(async () => ({
+    type: "prometheus",
+    queryBaseUrl: "https://prom.example.com",
+    detail: "Direct Prometheus connection",
+  })),
+}));
+
 vi.mock("../src/services/prometheus.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/services/prometheus.js")>();
   return {
@@ -100,11 +108,17 @@ describe("API routes (app.inject)", () => {
     setEnv(TEST_ENV);
     setQueryCache(new QueryCache(300));
     setCircuitBreaker(new CircuitBreaker());
+    // Stub the global fetch used by the connect-route upstream probe.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, status: 200 }))
+    );
     app = buildTestApp();
   });
 
   afterEach(async () => {
     await app.close();
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
   });
 
@@ -133,6 +147,8 @@ describe("API routes (app.inject)", () => {
       expect(call?.authTokenEncrypted).not.toContain("secret-bearer-token");
       // AES-256-GCM payload format: iv:authTag:ciphertext
       expect(call?.authTokenEncrypted?.split(":")).toHaveLength(3);
+      // Stores the resolved query base (detection output), not the raw input.
+      expect(call?.prometheusUrl).toBe("https://prom.example.com");
     });
 
     it("rejects invalid bodies with 400", async () => {
