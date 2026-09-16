@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, X } from "lucide-react";
-import { fetchLabelValues, fetchMetricNames, fetchRecipes, type PromqlRecipe } from "../lib/api";
+import {
+  fetchLabelValues,
+  fetchMetricNames,
+  fetchRecipesForTenant,
+  type PromqlRecipe,
+} from "../lib/api";
 
 interface Props {
   tenantId: string;
@@ -23,7 +28,9 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
   useEffect(() => {
     void (async () => {
       try {
-        const { recipes: list } = await fetchRecipes();
+        // Tenant-aware recipes: flagged by what THIS upstream actually has,
+        // plus auto-generated rate() panels for its own counters.
+        const { recipes: list } = await fetchRecipesForTenant(tenantId);
         setRecipes(list);
       } catch {
         // Recipes are a nicety — silently skip if unreachable.
@@ -123,21 +130,34 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
               <X className="h-3 w-3" aria-hidden />
             </button>
           </div>
-          <ul className="mb-3 flex flex-col gap-1">
-            {recipes.map((recipe) => (
-              <li key={recipe.title}>
-                <button
-                  type="button"
-                  className="w-full rounded-lg px-2 py-1.5 text-left text-xs text-zinc-300 transition hover:bg-zinc-900 hover:text-emerald-200"
-                  onClick={() => applyRecipe(recipe)}
-                >
-                  <span className="block font-medium">{recipe.title}</span>
-                  <span className="block truncate font-mono text-[10px] text-zinc-500">
-                    {recipe.promql}
-                  </span>
-                </button>
-              </li>
-            ))}
+          <ul className="mb-3 flex max-h-48 flex-col gap-1 overflow-y-auto">
+            {recipes.map((recipe) => {
+              const unavailable = recipe.available === false;
+              return (
+                <li key={recipe.title}>
+                  <button
+                    type="button"
+                    disabled={unavailable}
+                    title={
+                      unavailable
+                        ? `Needs: ${(recipe.missingMetrics ?? []).slice(0, 3).join(", ")}`
+                        : undefined
+                    }
+                    className={`w-full rounded-lg px-2 py-1.5 text-left text-xs transition ${
+                      unavailable
+                        ? "cursor-not-allowed text-zinc-600"
+                        : "text-zinc-300 hover:bg-zinc-900 hover:text-emerald-200"
+                    }`}
+                    onClick={() => applyRecipe(recipe)}
+                  >
+                    <span className="block font-medium">{recipe.title}</span>
+                    <span className="block truncate font-mono text-[10px] text-zinc-500">
+                      {recipe.promql}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
             Metrics on this upstream ({metricNames.length})

@@ -297,6 +297,13 @@ export function deletePanel(tenantId: string, id: number): Promise<{ removed: bo
   );
 }
 
+export function reorderPanel(tenantId: string, id: number, position: number): Promise<{ ok: boolean }> {
+  return authedJson<{ ok: boolean }>(
+    `/api/panels/${encodeURIComponent(tenantId)}/${id}/reorder`,
+    { method: "POST", body: JSON.stringify({ position }) }
+  );
+}
+
 // ---------------------------------------------------------------------------
 // PromQL helper — metric catalog, label values, curated recipes
 // ---------------------------------------------------------------------------
@@ -321,8 +328,29 @@ export interface PromqlRecipe {
   promql: string;
   kind: string;
   unit: string;
+  available?: boolean;
+  missingMetrics?: string[];
 }
 
 export function fetchRecipes(): Promise<{ recipes: PromqlRecipe[] }> {
   return authedJson<{ recipes: PromqlRecipe[] }>("/api/promql/recipes");
+}
+
+export function fetchRecipesForTenant(
+  tenantId: string
+): Promise<{ recipes: PromqlRecipe[] }> {
+  return authedJson<{ recipes: PromqlRecipe[] }>(
+    `/api/promql/recipes/${encodeURIComponent(tenantId)}`
+  );
+}
+
+export function fetchMetricSeries(
+  tenantId: string,
+  metric: string
+): Promise<{ metric: string; series: Array<Record<string, string>>; cached: boolean }> {
+  return authedJson<{
+    metric: string;
+    series: Array<Record<string, string>>;
+    cached: boolean;
+  }>(`/api/promql/series/${encodeURIComponent(tenantId)}/${encodeURIComponent(metric)}`);
 }

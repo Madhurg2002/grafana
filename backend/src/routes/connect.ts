@@ -11,6 +11,7 @@ import {
   listPanels,
   createPanel,
   deletePanel,
+  reorderPanels,
 } from "../db/schema.js";
 import { normalizePromQL } from "../services/prometheus.js";
 import { getEnv } from "../config/env.js";
@@ -285,6 +286,28 @@ app.delete<{ Params: { tenantId: string; id: string } }>(
     }
     const removed = await deletePanel(request.params.tenantId, id.data);
     return reply.code(removed ? 200 : 404).send({ removed });
+  }
+);
+
+const reorderSchema = z.object({ position: z.number().int().min(0).max(999) });
+
+/** POST /api/panels/:tenantId/:id/reorder — persist a new panel position. */
+app.post<{ Params: { tenantId: string; id: string }; Body: unknown }>(
+  "/api/panels/:tenantId/:id/reorder",
+  async (request, reply) => {
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    if (!id.success || !tenantId.success) {
+      return reply.code(400).send({ error: "Invalid panel id or tenantId" });
+    }
+    const parsed = reorderSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "Invalid position" });
+    }
+    const ok = await reorderPanels(tenantId.data, [
+      { id: id.data, position: parsed.data.position },
+    ]);
+    return reply.code(ok ? 200 : 404).send({ ok });
   }
 );
 }

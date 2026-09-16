@@ -39,7 +39,9 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Dashboard refresh controls (manual refresh, window picker) | ⏳ | Instant metrics poll every 15s, sparklines fetched once per mount; no user-facing refresh/window controls. |
 | Alerting (threshold → email/Slack) | ⏳ | The biggest Grafana-parity gap; needs an alerts table + notifier service + UI. |
 | Custom queries / panel builder | ✅ | `CustomPanels` UI: titled PromQL panels (sparkline/gauge/stat) persisted in `dashboard_panels`, normalized server-side, rendered live. Editing = delete + recreate. |
-| PromQL helper (autocomplete + recipes) | ✅ | `GET /api/metrics/:tenantId` (cached metric catalog), `GET /api/labels/:tenantId/:label`, `GET /api/promql/recipes`; `PromqlHelper` suggests metrics/instances from the CONNECTED upstream inside the panel builder. |
+| PromQL helper (autocomplete + recipes) | ✅ | `GET /api/metrics/:tenantId` (cached metric catalog), `GET /api/labels/:tenantId/:label`, tenant-aware recipes (`/api/promql/recipes/:tenantId` flags what the upstream lacks + auto-generates rate() panels for its own `_total` counters); `PromqlHelper` suggests metrics/instances from the CONNECTED upstream. |
+| Metric browser (table/column explorer) | ✅ | `MetricBrowser` modal: metrics as tables, `/api/promql/series` label sets as rows×columns; insert metric or per-series rate() into the panel builder. |
+| Rearrangeable dashboard | ✅ | Custom panels are drag-to-reorder (HTML5 DnD) with positions persisted via `POST /api/panels/:tenantId/:id/reorder` (transactional batch update); grid scales to `2xl:grid-cols-3` for large screens. |
 | Prometheus/Grafana toggle in connect UI | ✅ | Auto/Prometheus/Grafana segmented control; label copy + token requirements adapt per flavor (`upstreamType` override hits the backend's existing mismatch check). |
 | Share view = live dashboard parity | ✅ | Share snapshots now include network RX/TX series (same 60m/5m window); live dashboard now includes the hosts table. |
 | Multiple dashboards / saved views per user | 🔶 | Custom panels per tenant ship; multiple *named dashboards* (groups of panels) still deferred. |
