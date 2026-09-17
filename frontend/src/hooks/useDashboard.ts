@@ -34,14 +34,13 @@ const REFRESH_EVENT = "passthrough:refresh";
 function useRefreshTick(fallbackMs: number): number {
   const [tick, setTick] = useState(0);
   useEffect(() => {
+    void fallbackMs;
     function onRefresh(): void {
       setTick((t) => t + 1);
     }
     window.addEventListener(REFRESH_EVENT, onRefresh);
-    const handle = window.setInterval(onRefresh, Math.max(fallbackMs, 30) * 1000);
     return () => {
       window.removeEventListener(REFRESH_EVENT, onRefresh);
-      window.clearInterval(handle);
     };
   }, [fallbackMs]);
   return tick;
@@ -57,7 +56,8 @@ interface InstantState {
 export function useInstantMetric(
   tenantId: string | null,
   query: string,
-  fallbackMs = 60
+  fallbackMs = 60,
+  enabled = true
 ): InstantState {
   const [state, setState] = useState<InstantState>({
     data: null,
@@ -80,8 +80,12 @@ export function useInstantMetric(
   }, [tenantId, query]);
 
   useEffect(() => {
+    if (!enabled) {
+      setState((prev) => ({ ...prev, loading: false }));
+      return;
+    }
     void fetchData();
-  }, [fetchData, tick]);
+  }, [enabled, fetchData, tick]);
 
   return state;
 }
@@ -94,7 +98,8 @@ export function useRangeMetric(
   tenantId: string | null,
   query: string,
   windowMinutes = 60,
-  step = "5m"
+  step = "5m",
+  enabled = true
 ): { series: MetricSeries[]; error: string | null; loading: boolean } {
   const [series, setSeries] = useState<MetricSeries[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -102,13 +107,16 @@ export function useRangeMetric(
   const tick = useRefreshTick(30);
 
   useEffect(() => {
-    if (tenantId === null || query.length === 0) {
+    if (!enabled || tenantId === null || query.length === 0) {
       setLoading(false);
       return;
     }
     let cancelled = false;
-    const end = new Date();
-    const start = new Date(end.getTime() - windowMinutes * 60_000);
+    // Align all widgets to the same 30-second window so identical range
+    // queries can share one browser request.
+    const endMs = Math.floor(Date.now() / 30_000) * 30_000;
+    const end = new Date(endMs);
+    const start = new Date(endMs - windowMinutes * 60_000);
     rangeQuery({
       tenantId,
       query,
@@ -144,7 +152,7 @@ export function useRangeMetric(
     return () => {
       cancelled = true;
     };
-  }, [tenantId, query, windowMinutes, step, tick]);
+  }, [enabled, tenantId, query, windowMinutes, step, tick]);
 
   return { series, error, loading };
 }

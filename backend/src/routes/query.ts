@@ -91,6 +91,14 @@ const rangeSchema = instantSchema.extend({
     .regex(/^[0-9]+(?:\.[0-9]+)?(ms|s|m|h|d|w|y)$/, "step must be a duration like 15s, 1m, 5m"),
 });
 
+const instantBatchSchema = z.object({
+  requests: z.array(instantSchema).min(1).max(50),
+});
+
+const rangeBatchSchema = z.object({
+  requests: z.array(rangeSchema).min(1).max(50),
+});
+
 export interface QueryResponseBody {
   resultType: string;
   result: unknown[];
@@ -98,6 +106,14 @@ export interface QueryResponseBody {
   query: string;
   breaker?: string;
   degraded?: boolean;
+}
+
+interface QueryBatchItem extends QueryResponseBody {
+  error?: string;
+}
+
+function sameTenant(requests: Array<{ tenantId: string }>): boolean {
+  return requests.every((request) => request.tenantId === requests[0]?.tenantId);
 }
 
 function upstreamErrorReply(error: unknown): {
@@ -200,6 +216,63 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
       const { code, message } = upstreamErrorReply(error);
       return reply.code(code).send({ error: message });
     }
+  });
+
+  app.post<{ Body: unknown }>("/api/query/batch", async (request, reply) => {
+    const parsed = instantBatchSchema.safeParse(request.body);
+    if (!parsed.success || !sameTenant(parsed.data?.requests ?? [])) {
+      return reply.code(400).send({ error: "Batch requests must contain 1–50 queries for one tenant" });
+    }
+    const tenantId = parsed.data.requests[0]?.tenantId;
+    if (tenantId === undefined || !(await requireTenantAccess(request, reply, tenantId))) {
+      return reply;
+    }
+    const results = await Promise.all(
+      parsed.data.requests.map(async ({ query, time }): Promise<QueryBatchItem> => {
+        try {
+          const { result, cached } = await instantQuery({ tenantId, query, time });
+          lastKnownValues.set(tenantId, { query, result });
+          return { resultType: result.resultType, result: result.result, cached, query };
+        } catch (error) {
+          return {
+            resultType: "vector",
+            result: [],
+            cached: false,
+            query,
+            error: upstreamErrorReply(error).message,
+          };
+        }
+      })
+    );
+    return reply.code(200).send({ results });
+  });
+
+  app.post<{ Body: unknown }>("/api/query_range/batch", async (request, reply) => {
+    const parsed = rangeBatchSchema.safeParse(request.body);
+    if (!parsed.success || !sameTenant(parsed.data?.requests ?? [])) {
+      return reply.code(400).send({ error: "Batch requests must contain 1–50 range queries for one tenant" });
+    }
+    const tenantId = parsed.data.requests[0]?.tenantId;
+    if (tenantId === undefined || !(await requireTenantAccess(request, reply, tenantId))) {
+      return reply;
+    }
+    const results = await Promise.all(
+      parsed.data.requests.map(async ({ query, start, end, step }): Promise<QueryBatchItem> => {
+        try {
+          const { result, cached } = await rangeQuery({ tenantId, query, start, end, step });
+          return { resultType: result.resultType, result: result.result, cached, query };
+        } catch (error) {
+          return {
+            resultType: "matrix",
+            result: [],
+            cached: false,
+            query,
+            error: upstreamErrorReply(error).message,
+          };
+        }
+      })
+    );
+    return reply.code(200).send({ results });
   });
 
   // -----------------------------------------------------------------------
