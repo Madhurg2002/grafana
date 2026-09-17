@@ -1,6 +1,7 @@
 import {
   Area,
   AreaChart,
+  XAxis,
   ResponsiveContainer,
   Tooltip,
   YAxis,
@@ -22,6 +23,14 @@ function formatBytes(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} MB/s`;
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)} KB/s`;
   return `${value.toFixed(0)} B/s`;
+}
+
+export function formatChartTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 export function SparkLineCard({
@@ -64,6 +73,12 @@ export function SparkLineCard({
                 <stop offset="100%" stopColor={stroke} stopOpacity={0} />
               </linearGradient>
             </defs>
+            <XAxis
+              dataKey="timestamp"
+              type="number"
+              domain={["dataMin", "dataMax"]}
+              hide
+            />
             <YAxis hide domain={[0, "auto"]} />
             <Tooltip
               cursor={{ stroke: "#3f3f46", strokeWidth: 1 }}
@@ -73,9 +88,7 @@ export function SparkLineCard({
                 borderRadius: 8,
                 fontSize: 12,
               }}
-              labelFormatter={(label: number) =>
-                new Date(label).toLocaleTimeString()
-              }
+              labelFormatter={(label: number) => formatChartTime(label)}
             />
             <Area
               type="monotone"
