@@ -783,8 +783,16 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 }}
               >
                 <Pencil className="h-3 w-3" aria-hidden />
+            <div className="flex items-center gap-1 text-[11px] text-zinc-500">
+              <button
+                type="button"
+                aria-label="Refresh now"
+                title="Refresh every widget now"
+                className="rounded p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
+                onClick={() => window.dispatchEvent(new CustomEvent("passthrough:refresh"))}
+              >
+                <RefreshCw className="h-3 w-3" aria-hidden />
               </button>
-            )}
             <label className="flex items-center gap-1 text-[11px] text-zinc-500">
               <RefreshCw className="h-3 w-3" aria-hidden />
               <select
@@ -802,7 +810,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
             <label className="flex items-center gap-1 text-[11px] text-zinc-500">
               <Maximize2 className="h-3 w-3" aria-hidden />
               <select
@@ -836,28 +844,6 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 Add widget
               </button>
             ) : null}
-            <button
-              type="button"
-              data-testid="toggle-builtins"
-              title={
-                activePage?.show_builtins === false
-                  ? "Built-in essentials are hidden on this page — click to show them"
-                  : "Built-in essentials (Hosts Up, CPU, RAM, Network) show above this page — click to hide them"
-              }
-              disabled={busy}
-              className={`rounded-lg border px-2 py-1 text-[11px] transition ${
-                activePage?.show_builtins === false
-                  ? "border-zinc-800 text-zinc-500 hover:border-emerald-500/40 hover:text-emerald-300"
-                  : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-              }`}
-              onClick={() => {
-                if (activePage !== null) {
-                  void handlePageSetting({ showBuiltins: !(activePage.show_builtins ?? true) });
-                }
-              }}
-            >
-              {activePage?.show_builtins === false ? "Built-ins: off" : "Built-ins: on"}
-            </button>
           </div>
         ) : null}
       </div>
