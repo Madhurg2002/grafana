@@ -9,15 +9,12 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 
 ## 🔴 Now — before the next real user cohort
 
-| Item | Why it matters | When / trigger |
-| :--- | :--- | :--- |
-| Apply migrations 008–013 on the production DB | Render free tier cannot run the restricted pre-deploy command. Run `npm run db:migrate --workspace backend` from a migration-capable environment against the configured external Postgres database before the next deploy, then verify orgs/pages/alerts/multi-links. | Before the next deploy — verify, then remove this row |
+No remaining items.
 
 ## 🟠 Soon — hardening while the app is in real use
 
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
-| `render.yaml` infra validation | Spec exists; the real deploy is dashboard-configured. Validate once hosting lands on Render, then delete or keep as reference. | At first Render deploy attempt |
 | Alert webhook deliverability check | The evaluator posts to a user-supplied URL with retries; validate a real receiver (Slack/Discord webhook or similar) end-to-end. | First time someone configures a real webhook |
 
 ## 🟢 Later — explicitly deferred until prod-ready
