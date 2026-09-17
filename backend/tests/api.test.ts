@@ -101,6 +101,11 @@ vi.mock("../src/db/users.js", async (importOriginal) => {
     })),
     ensureOwnedTenant: vi.fn(async (userId: string) => `t_${userId.replace(/^usr_/, "")}`),
     tenantOwnedBy: vi.fn(async () => true),
+    tenantHasOwner: vi.fn(async () => false),
+    canViewTenant: vi.fn(async () => true),
+    canEditTenant: vi.fn(async () => true),
+    getTenantOrg: vi.fn(async () => null),
+    isOrgMember: vi.fn(async () => false),
     createShareLink: vi.fn(async (input: { tenantId: string; label?: string }) => ({
       id: "shr_test123",
       tenant_id: input.tenantId,
@@ -253,10 +258,12 @@ describe("API routes (app.inject)", () => {
   });
 
   describe("POST /api/query", () => {
-    it("proxies a normalized query upstream", async () => {
+    it("proxies a normalized query upstream (with a tenant-scoped token)", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
       const response = await app.inject({
         method: "POST",
         url: "/api/query",
+        headers: { authorization: `Bearer ${issueTenantToken("t1")}` },
         payload: { tenantId: "t1", query: "up" },
       });
       expect(response.statusCode).toBe(200);
@@ -265,10 +272,32 @@ describe("API routes (app.inject)", () => {
       expect(body.cached).toBe(false);
     });
 
-    it("routes pass raw queries; the client layer normalizes upstream", async () => {
+    it("rejects unauthenticated queries with 401 (deferred ledger item closed)", async () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/query",
+        payload: { tenantId: "t1", query: "up" },
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it("rejects a tenant token minted for a different tenant with 403", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/query",
+        headers: { authorization: `Bearer ${issueTenantToken("other-tenant")}` },
+        payload: { tenantId: "t1", query: "up" },
+      });
+      expect(response.statusCode).toBe(403);
+    });
+
+    it("routes pass raw queries; the client layer normalizes upstream", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/query",
+        headers: { authorization: `Bearer ${issueTenantToken("t1")}` },
         payload: {
           tenantId: "t1",
           query: "rate(node_network_receive_bytes_total[1m])",
@@ -285,6 +314,8 @@ describe("API routes (app.inject)", () => {
     });
 
     it("serves cached responses on repeat queries", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
+      const auth = { authorization: `Bearer ${issueTenantToken("t1")}` };
       // Prime a fresh cache and verify the hit path returns cached:true.
       const cache = new QueryCache(300);
       const params = new URLSearchParams({ query: "up" });
@@ -296,6 +327,7 @@ describe("API routes (app.inject)", () => {
       const second = await app.inject({
         method: "POST",
         url: "/api/query",
+        headers: auth,
         payload: { tenantId: "t1", query: "up" },
       });
       expect(second.statusCode).toBe(200);
@@ -314,6 +346,7 @@ describe("API routes (app.inject)", () => {
     });
 
     it("maps upstream errors to 502", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
       const mock = vi.mocked(prometheus.instantQuery);
       mock.mockRejectedValueOnce(
         new prometheus.PrometheusClientError("Prometheus responded with 500", 502)
@@ -321,17 +354,20 @@ describe("API routes (app.inject)", () => {
       const response = await app.inject({
         method: "POST",
         url: "/api/query",
+        headers: { authorization: `Bearer ${issueTenantToken("t1")}` },
         payload: { tenantId: "t1", query: "up" },
       });
       expect(response.statusCode).toBe(502);
     });
 
     it("maps circuit-open to 503 (or degraded 200 with fallback)", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
       const mock = vi.mocked(prometheus.instantQuery);
       mock.mockRejectedValueOnce(new (await import("../src/services/circuitBreaker.js")).CircuitOpenError());
       const response = await app.inject({
         method: "POST",
         url: "/api/query",
+        headers: { authorization: `Bearer ${issueTenantToken("circuit-tenant")}` },
         payload: { tenantId: "circuit-tenant", query: "distinct-query" },
       });
       // 503 when no fallback exists; 200+degraded when serving last-known value.
@@ -347,9 +383,11 @@ describe("API routes (app.inject)", () => {
 
   describe("POST /api/query_range", () => {
     it("returns matrix data", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
       const response = await app.inject({
         method: "POST",
         url: "/api/query_range",
+        headers: { authorization: `Bearer ${issueTenantToken("t1")}` },
         payload: {
           tenantId: "t1",
           query: "up",

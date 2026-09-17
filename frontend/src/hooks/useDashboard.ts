@@ -23,23 +23,48 @@ export const DEFAULT_QUERIES: DashboardQueries = {
   hostsUp: "up",
 };
 
+/** Event name the pages workspace broadcasts to refresh every widget at once. */
+const REFRESH_EVENT = "passthrough:refresh";
+
+/**
+ * Fires on refresh broadcasts (manual refresh button, page cadence timer)
+ * and on a slow fallback timer so open tabs stay current even if the
+ * broadcast timer was torn down.
+ */
+function useRefreshTick(fallbackMs: number): number {
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    function onRefresh(): void {
+      setTick((t) => t + 1);
+    }
+    window.addEventListener(REFRESH_EVENT, onRefresh);
+    const handle = window.setInterval(onRefresh, Math.max(fallbackMs, 30) * 1000);
+    return () => {
+      window.removeEventListener(REFRESH_EVENT, onRefresh);
+      window.clearInterval(handle);
+    };
+  }, [fallbackMs]);
+  return tick;
+}
+
 interface InstantState {
   data: QueryResponseBody | null;
   error: string | null;
   loading: boolean;
 }
 
-/** Polls an instant query every `intervalMs` while connected. */
+/** Polls an instant query on refresh broadcasts + a slow fallback timer. */
 export function useInstantMetric(
   tenantId: string | null,
   query: string,
-  intervalMs = 15000
+  fallbackMs = 60
 ): InstantState {
   const [state, setState] = useState<InstantState>({
     data: null,
     error: null,
     loading: true,
   });
+  const tick = useRefreshTick(fallbackMs);
 
   const fetchData = useCallback(async (): Promise<void> => {
     if (tenantId === null || query.length === 0) {
@@ -56,21 +81,15 @@ export function useInstantMetric(
 
   useEffect(() => {
     void fetchData();
-    if (tenantId === null) {
-      return;
-    }
-    const handle = setInterval(() => {
-      void fetchData();
-    }, intervalMs);
-    return () => {
-      clearInterval(handle);
-    };
-  }, [fetchData, tenantId, intervalMs]);
+  }, [fetchData, tick]);
 
   return state;
 }
 
-/** Fetches a range query once per tenant+query change for sparklines. */
+/**
+ * Fetches a range query for sparklines — re-fetched on window change and
+ * on every refresh broadcast (page cadence / manual refresh).
+ */
 export function useRangeMetric(
   tenantId: string | null,
   query: string,
@@ -80,6 +99,7 @@ export function useRangeMetric(
   const [series, setSeries] = useState<MetricSeries[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const tick = useRefreshTick(30);
 
   useEffect(() => {
     if (tenantId === null || query.length === 0) {
@@ -124,7 +144,7 @@ export function useRangeMetric(
     return () => {
       cancelled = true;
     };
-  }, [tenantId, query, windowMinutes, step]);
+  }, [tenantId, query, windowMinutes, step, tick]);
 
   return { series, error, loading };
 }

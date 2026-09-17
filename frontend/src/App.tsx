@@ -143,10 +143,10 @@ function SignedInApp(): JSX.Element {
               token — and we handle the rest.
             </p>
             <ConnectForm
-              onConnected={() => {
+              onConnected={(connectedTenantId) => {
                 void (async () => {
                   try {
-                    setConnection(await fetchConnectionInfo(tenantId));
+                    setConnection(await fetchConnectionInfo(connectedTenantId));
                   } catch {
                     setConnection(null);
                   }
@@ -234,20 +234,27 @@ function Home(): JSX.Element {
       </div>
     </div>
   );
-}
-
-/** Legacy no-account connect → dashboard flow. */
+}/** Legacy no-account connect → dashboard flow. */
 function ConnectFlow(): JSX.Element {
   const [tenantId, setTenantId] = useState<string | null>(null);
+  const { setTenantToken } = useAuth();
+
+  /** Persists the workspace-scoped token so metrics/stream stay readable. */
+  function handleConnected(connectedTenantId: string, tenantToken?: string): void {
+    if (tenantToken !== undefined && tenantToken.length > 0) {
+      setTenantToken(tenantToken);
+    }
+    setTenantId(connectedTenantId);
+  }
+
   if (tenantId === null) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-4">
-        <h1 className="text-lg font-semibold tracking-tight">Connect an endpoint</h1>
-        <ConnectForm onConnected={setTenantId} />
-      </div>
-    );
-  }
-  return <DashboardView tenantId={tenantId} />;
+        <h1 className="text-lg font-semibold tracking-tight">Connect an endpoint</h1>            <ConnectForm onConnected={handleConnected} />
+          </div>
+        );
+      }
+      return <DashboardView tenantId={tenantId} />;
 }
 
 function SharePage({ id }: { id: string }): JSX.Element {

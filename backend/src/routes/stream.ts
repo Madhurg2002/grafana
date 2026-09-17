@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { requireTenantAccess } from "../middleware/auth.js";
 import { getSseBroadcaster } from "../services/sse.js";
 import { getEnv } from "../config/env.js";
 
@@ -36,6 +37,9 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: "tenantId query parameter is required" });
     }
     const { tenantId } = parsed.data;
+    if (!(await requireTenantAccess(request, reply, tenantId))) {
+      return reply; // 401/403 already sent
+    }
 
     const corsOrigin = corsOriginFor(request.headers.origin);
     reply.raw.writeHead(200, {

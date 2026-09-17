@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { requireTenantAccess, issueTenantToken } from "../middleware/auth.js";
 import { encryptToken } from "../db/encryption.js";
 import {
   upsertTenant,
@@ -16,6 +17,14 @@ import {
   createPage,
   deletePage,
   renamePage,
+  setHomePage,
+  updatePageSettings,
+  listWidgets,
+  createWidget,
+  updateWidget,
+  deleteWidget,
+  reorderWidgets,
+  type WidgetKind,
 } from "../db/schema.js";
 import { normalizePromQL } from "../services/prometheus.js";
 import { getEnv } from "../config/env.js";
@@ -75,6 +84,8 @@ export interface ConnectResponse {
   connectionId?: number;
   label?: string;
   activated?: boolean;
+  /** Tenant-scoped token letting the connector read this workspace's metrics. */
+  tenantToken?: string;
   error?: string;
 }
 
@@ -165,6 +176,9 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
       connectionId: saved.id,
       label: saved.label ?? "default",
       activated: activate ?? true,
+      // Scoped token so anonymous connects can read THIS tenant (query/
+      // stream/panels) without a full user account.
+      tenantToken: issueTenantToken(tenantId),
       ...(probeError !== undefined ? { error: probeError } : {}),
     };
     return reply.code(probeOk ? 200 : 502).send(response);
@@ -181,6 +195,9 @@ export async function connectRoutes(app: FastifyInstance): Promise<void> {
       const connection = await getConnection(tenantId.data);
       if (connection === null) {
         return reply.code(404).send({ error: "No connection for this tenant" });
+      }
+      if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+        return reply; // 401/403 already sent
       }
       return reply.code(200).send({
         tenantId: connection.tenant_id,
@@ -203,6 +220,9 @@ app.get<{ Params: { tenantId: string } }>(
     const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
     if (!tenantId.success) {
       return reply.code(400).send({ error: "Invalid tenantId" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
     }
     const connections = await listConnections(tenantId.data);
     return reply.code(200).send({
@@ -228,6 +248,9 @@ app.post<{ Params: { tenantId: string; id: string } }>(
     if (!id.success) {
       return reply.code(400).send({ error: "Invalid connection id" });
     }
+    if (!(await requireTenantAccess(request, reply, request.params.tenantId))) {
+      return reply; // 401/403 already sent
+    }
     const activated = await activateConnection(request.params.tenantId, id.data);
     if (activated === null) {
       return reply.code(404).send({ error: "Connection not found for this tenant" });
@@ -248,6 +271,9 @@ app.delete<{ Params: { tenantId: string; id: string } }>(
     if (!id.success) {
       return reply.code(400).send({ error: "Invalid connection id" });
     }
+    if (!(await requireTenantAccess(request, reply, request.params.tenantId))) {
+      return reply; // 401/403 already sent
+    }
     const removed = await deleteConnection(request.params.tenantId, id.data);
     return reply.code(removed ? 200 : 404).send({ removed });
   }
@@ -264,6 +290,9 @@ app.get<{ Params: { tenantId: string }; Querystring: { pageId?: string } }>(
   const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
   if (!tenantId.success) {
     return reply.code(400).send({ error: "Invalid tenantId" });
+  }
+  if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+    return reply; // 401/403 already sent
   }
   const pageIdRaw = request.query.pageId;
   let pageId: number | undefined;
@@ -285,6 +314,9 @@ app.post<{ Params: { tenantId: string }; Body: unknown }>(
     const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
     if (!tenantId.success) {
       return reply.code(400).send({ error: "Invalid tenantId" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
     }
     const parsed = panelSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -324,12 +356,211 @@ app.delete<{ Params: { tenantId: string; id: string } }>(
     if (!id.success) {
       return reply.code(400).send({ error: "Invalid panel id" });
     }
+    if (!(await requireTenantAccess(request, reply, request.params.tenantId))) {
+      return reply; // 401/403 already sent
+    }
     const removed = await deletePanel(request.params.tenantId, id.data);
     return reply.code(removed ? 200 : 404).send({ removed });
   }
 );
 
 const reorderSchema = z.object({ position: z.number().int().min(0).max(999) });
+
+// ---------------------------------------------------------------------------
+// Page widgets — the user-modifiable contents of each dashboard page.
+// ---------------------------------------------------------------------------
+
+const widgetKindSchema = z.enum(["stat", "gauge", "sparkline", "hosts_table"]);
+const widgetSchema = z.object({
+  kind: widgetKindSchema,
+  title: z.string().min(1).max(80),
+  /** Required for metric widgets; hosts_table ignores it. */
+  promql: z.string().max(4096).optional(),
+  unit: z.string().max(24).optional(),
+  span: z.number().int().min(1).max(3).optional(),
+});
+const widgetPatchSchema = widgetSchema.partial();
+const widgetReorderSchema = z.object({
+  positions: z
+    .array(z.object({ id: z.number().int().positive(), position: z.number().int().min(0).max(999) }))
+    .min(1)
+    .max(100),
+});
+
+/** GET /api/pages/:tenantId/:pageId/widgets — a page's widgets, in order. */
+app.get<{ Params: { tenantId: string; pageId: string } }>(
+  "/api/pages/:tenantId/:pageId/widgets",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const pageId = z.coerce.number().int().positive().safeParse(request.params.pageId);
+    if (!tenantId.success || !pageId.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or pageId" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
+    const widgets = await listWidgets(pageId.data, tenantId.data);
+    return reply.code(200).send({ widgets });
+  }
+);
+
+/** POST /api/pages/:tenantId/:pageId/widgets — add a widget to a page. */
+app.post<{ Params: { tenantId: string; pageId: string }; Body: unknown }>(
+  "/api/pages/:tenantId/:pageId/widgets",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const pageId = z.coerce.number().int().positive().safeParse(request.params.pageId);
+    if (!tenantId.success || !pageId.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or pageId" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
+    const parsed = widgetSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "Invalid widget body",
+        details: parsed.error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message,
+        })),
+      });
+    }
+    const kind = parsed.data.kind as WidgetKind;
+    if (kind !== "hosts_table" && (parsed.data.promql ?? "").trim().length === 0) {
+      return reply.code(400).send({ error: "Metric widgets need a PromQL query" });
+    }
+    // Metric widgets store the NORMALIZED query (safety laws always hold).
+    const promql =
+      kind === "hosts_table" ? "" : normalizePromQL((parsed.data.promql ?? "").trim());
+    const widget = await createWidget({
+      pageId: pageId.data,
+      tenantId: tenantId.data,
+      kind,
+      title: parsed.data.title,
+      promql,
+      unit: parsed.data.unit ?? null,
+      span: parsed.data.span ?? 1,
+    });
+    return reply.code(201).send({ widget });
+  }
+);
+
+/** PATCH /api/pages/:tenantId/widgets/:id — edit title/query/span/kind in place. */
+app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
+  "/api/pages/:tenantId/widgets/:id",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!tenantId.success || !id.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or widget id" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
+    const parsed = widgetPatchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "Invalid widget patch" });
+    }
+    const patch = parsed.data;
+    const updated = await updateWidget(tenantId.data, id.data, {
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      // Normalize any query change so saved widgets always obey safety laws.
+      ...(patch.promql !== undefined ? { promql: normalizePromQL(patch.promql) } : {}),
+      ...(patch.unit !== undefined ? { unit: patch.unit } : {}),
+      ...(patch.span !== undefined ? { span: patch.span } : {}),
+      ...(patch.kind !== undefined ? { kind: patch.kind as WidgetKind } : {}),
+    });
+    if (updated === null) {
+      return reply.code(404).send({ error: "Widget not found" });
+    }
+    return reply.code(200).send({ widget: updated });
+  }
+);
+
+/** DELETE /api/pages/:tenantId/widgets/:id */
+app.delete<{ Params: { tenantId: string; id: string } }>(
+  "/api/pages/:tenantId/widgets/:id",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!tenantId.success || !id.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or widget id" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
+    const removed = await deleteWidget(tenantId.data, id.data);
+    return reply.code(removed ? 200 : 404).send({ removed });
+  }
+);
+
+/** POST /api/pages/:tenantId/:pageId/widgets/reorder — batch position save. */
+app.post<{ Params: { tenantId: string; pageId: string }; Body: unknown }>(
+  "/api/pages/:tenantId/:pageId/widgets/reorder",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const pageId = z.coerce.number().int().positive().safeParse(request.params.pageId);
+    if (!tenantId.success || !pageId.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or pageId" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
+    const parsed = widgetReorderSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "Invalid positions" });
+    }
+    const ok = await reorderWidgets(tenantId.data, pageId.data, parsed.data.positions);
+    return reply.code(ok ? 200 : 404).send({ ok });
+  }
+);
+
+/** POST /api/pages/:tenantId/:id/home — make this page the tenant's home. */
+app.post<{ Params: { tenantId: string; id: string } }>(
+  "/api/pages/:tenantId/:id/home",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!tenantId.success || !id.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or page id" });
+    }
+    const ok = await setHomePage(tenantId.data, id.data);
+    return reply.code(ok ? 200 : 404).send({ ok });
+  }
+);
+
+/** PATCH /api/pages/:tenantId/:id/settings — span/refresh/window defaults. */
+app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
+  "/api/pages/:tenantId/:id/settings",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!tenantId.success || !id.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or page id" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
+    const bodySchema = z.object({
+      defaultSpan: z.number().int().min(1).max(3).optional(),
+      refreshSeconds: z.number().int().min(5).max(600).optional(),
+      windowMinutes: z.number().int().min(5).max(10080).optional(),
+    });
+    const parsed = bodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "Invalid page settings",
+        details: parsed.error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message,
+        })),
+      });
+    }
+    const ok = await updatePageSettings(tenantId.data, id.data, parsed.data);
+    return reply.code(ok ? 200 : 404).send({ ok });
+  }
+);
 
 // ---------------------------------------------------------------------------
 // Dashboard pages ("Home" + user-created groupings of panels)
@@ -342,6 +573,9 @@ app.get<{ Params: { tenantId: string } }>("/api/pages/:tenantId", async (request
   const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
   if (!tenantId.success) {
     return reply.code(400).send({ error: "Invalid tenantId" });
+  }
+  if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+    return reply; // 401/403 already sent
   }
   const pages = await listPages(tenantId.data);
   // Auto-provision Home on first read so the UI always has a landing page.
@@ -358,6 +592,9 @@ app.post<{ Params: { tenantId: string }; Body: unknown }>(
     const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
     if (!tenantId.success) {
       return reply.code(400).send({ error: "Invalid tenantId" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
     }
     const parsed = pageSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -378,6 +615,9 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
     if (!tenantId.success || !id.success) {
       return reply.code(400).send({ error: "Invalid tenantId or page id" });
     }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
     const parsed = pageSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "Invalid page name" });
@@ -395,6 +635,9 @@ app.delete<{ Params: { tenantId: string; id: string } }>(
     if (!tenantId.success || !id.success) {
       return reply.code(400).send({ error: "Invalid tenantId or page id" });
     }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
     const ok = await deletePage(tenantId.data, id.data);
     return reply.code(ok ? 200 : 404).send({ ok });
   }
@@ -408,6 +651,9 @@ app.post<{ Params: { tenantId: string; id: string }; Body: unknown }>(
     const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
     if (!id.success || !tenantId.success) {
       return reply.code(400).send({ error: "Invalid panel id or tenantId" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
     }
     const parsed = reorderSchema.safeParse(request.body);
     if (!parsed.success) {

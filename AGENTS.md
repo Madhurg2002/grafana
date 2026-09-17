@@ -38,13 +38,16 @@ Referenced from `docs/deferred.md` (status) and `docs/skills.md` (deep dive). Ro
 | PromQL proxy: instant/range, normalizer, 300s LRU cache, circuit breaker | `backend/src/services/prometheus.ts`, `cache.ts`, `circuitBreaker.ts` |
 | Live updates: single-poll SSE fan-out (1 query / 5s / tenant) | `backend/src/services/sse.ts`, `/api/stream` |
 | Built-in dashboard: hosts up, CPU/RAM gauges, network sparklines, scrape-target table | `frontend/src/components/DashboardView.tsx` |
-| Custom views: PromQL panels (sparkline/gauge/stat), drag-reorder, persisted | `CustomPanels.tsx`, `/api/panels/:tenantId*` |
-| Dashboard PAGES: Home + user-created pages grouping panels | migration 007, `/api/pages/:tenantId*`, page tabs in `CustomPanels` |
+| Custom views: widgets (stat/gauge/sparkline/hosts-table), per-widget grid span, in-place edit, drag-reorder, persisted | `CustomPanels.tsx`, `/api/pages/:tenantId/:pageId/widgets*` |
+| Dashboard PAGES: user-modifiable dashboards — rename, pick home, per-page refresh/window, widgets | migrations 007+009, `/api/pages/:tenantId*`, page tabs in `CustomPanels` |
+| Organizations: create/join by invite code, member roster, attach workspace, org-wide share audience | migration 008, `backend/src/routes/orgs.ts`, ProfileView → Organizations |
+| Account settings: password change + display name | `POST /api/auth/change-password`, `PATCH /api/auth/profile`, ProfileView → Account |
+| Tenant auth: session **or** tenant-scoped token (header/`?token=`) on every tenant route | `requireTenantAccess` in `backend/src/middleware/auth.ts`; token minted by `POST /api/connect` |
 | PromQL helper: recipes filtered by upstream, metric catalog, label values, series browser, predictive autocomplete | `PromqlHelper.tsx`, `MetricBrowser.tsx`, `/api/metrics|labels|promql/*` |
 | Formula transparency: every card/table exposes the query behind it (hover tooltip / `query:` line) | `SparkLineCard`, `GaugeCard`, `DashboardView` hosts table |
-| Share links: audience (anyone-link / email allow-list) × right (view/edit), revoke, public snapshot view | `backend/src/routes/share.ts`, `ShareDialog.tsx`, `ShareView.tsx` |
+| Share links: audience (anyone-link / email allow-list / **org members**) × right (view/edit), revoke, public snapshot view | `backend/src/routes/share.ts`, `ShareDialog.tsx`, `ShareView.tsx` |
 | Profile: links I created (revoke), links shared with me, revoked status | `frontend/src/components/ProfileView.tsx`, `/api/profile/shares` |
-| Per-user grid density (auto/1/2/3), per-screen responsive | `CustomPanels.tsx` density control (localStorage) |
+| Per-widget grid span (1–3) + responsive wide layout | `CustomPanels.tsx` span controls, `PATCH /api/pages/:tenantId/widgets/:id` |
 | Invite emails via Resend | `backend/src/services/email.ts` — OPTIONAL, disabled until `RESEND_API_KEY` is set (deferred; see ledger) |
 
 ## Decision Tree (how to choose where things go)
