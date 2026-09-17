@@ -40,10 +40,22 @@ export function SparkLineCard({
   stroke,
   query,
 }: SparkLineCardProps): JSX.Element {
-  const points = series.flatMap((s) =>
-    s.points.map((p) => ({ timestamp: p.timestamp, value: p.value }))
-  );
-  const latest = points.length > 0 ? points[points.length - 1]?.value ?? 0 : 0;
+  const chartData = Array.from(
+    series.reduce((rows, current, index) => {
+      const key = `series_${index}`;
+      for (const point of current.points) {
+        const row = rows.get(point.timestamp) ?? { timestamp: point.timestamp };
+        row[key] = point.value;
+        rows.set(point.timestamp, row);
+      }
+      return rows;
+    }, new Map<number, { timestamp: number; [key: string]: number }>()).values()
+  ).sort((a, b) => a.timestamp - b.timestamp);
+  const latest = series.reduce((latestValue, current) => {
+    const point = current.points[current.points.length - 1];
+    return point !== undefined ? Math.max(latestValue, point.value) : latestValue;
+  }, 0);
+  const lineColors = [stroke, "#60a5fa", "#fbbf24", "#f472b6", "#a78bfa", "#38bdf8"];
 
   return (
     <motion.div
@@ -66,7 +78,7 @@ export function SparkLineCard({
       </div>
       <div className="mt-3 h-28">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={points} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={`grad-${title.replace(/\s+/g, "-")}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor={stroke} stopOpacity={0.35} />
@@ -90,14 +102,19 @@ export function SparkLineCard({
               }}
               labelFormatter={(label: number) => formatChartTime(label)}
             />
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke={stroke}
-              strokeWidth={2}
-              fill={`url(#grad-${title.replace(/\s+/g, "-")})`}
-              isAnimationActive={false}
-            />
+            {series.map((current, index) => (
+              <Area
+                key={`${current.label}-${index}`}
+                type="monotone"
+                dataKey={`series_${index}`}
+                name={current.label}
+                stroke={lineColors[index % lineColors.length]}
+                strokeWidth={2}
+                fill={index === 0 ? `url(#grad-${title.replace(/\s+/g, "-")})` : "none"}
+                connectNulls={false}
+                isAnimationActive={false}
+              />
+            ))}
           </AreaChart>
         </ResponsiveContainer>
       </div>
