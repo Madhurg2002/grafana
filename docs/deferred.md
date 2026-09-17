@@ -73,7 +73,8 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 
 ## Verification (latest)
 
-- `npm test` (root): backend 75 passed + 7 skipped (no live DB in sandbox) ✅ + frontend 17/17 ✅
+- Code review pass (post-46208e9): fixed SSE responses bypassing `@fastify/cors` (explicit `Access-Control-Allow-Origin` on raw `writeHead` in `routes/stream.ts` — root cause of the Vercel-side `/api/stream` CORS error), share-create now returns `skipped` emails so the copy-link fallback renders, ShareView re-mints expired 1h view tokens instead of degrading to the restricted screen.
+- `npm test` (root): backend 83 passed + 7 skipped (no live DB in sandbox) ✅ + frontend 17/17 ✅
 - `npm run typecheck`: backend + frontend clean, zero `any` ✅
 - Builds: `frontend/dist` ✅ · `backend/dist` ✅
 

@@ -28,18 +28,25 @@ export function ShareView({ id }: { id: string }): JSX.Element {
     async function load(): Promise<void> {
       try {
         // Email-restricted links: exchange the signed-in session for a
-        // short-lived view token once, then attach it to snapshot fetches.
+        // short-lived view token, re-minting when it expires (1h TTL) so a
+        // long-lived tab never degrades into a false "restricted" screen.
         let token = accessToken;
-        if (token === null) {
-          try {
-            const access = await fetchShareAccessToken(id);
-            if (!cancelled) {
-              setAccessToken(access.token);
-            }
-            token = access.token;
-          } catch {
-            // Signed out or not allow-listed — the view fetch decides below.
+        if (token !== null) {
+          const payload = await fetchShareView(id, token);
+          if (!cancelled) {
+            setData(payload);
+            setRestricted(false);
           }
+          return;
+        }
+        try {
+          const access = await fetchShareAccessToken(id);
+          if (!cancelled) {
+            setAccessToken(access.token);
+          }
+          token = access.token;
+        } catch {
+          // Signed out or not allow-listed — the view fetch decides below.
         }
         const payload = await fetchShareView(id, token ?? undefined);
         if (!cancelled) {
@@ -50,6 +57,9 @@ export function ShareView({ id }: { id: string }): JSX.Element {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : "Failed to load share view";
           if (/restricted|allow-list|403/i.test(message)) {
+            // The token may simply have expired — clear it so the next
+            // refresh re-mints from the session instead of staying stuck.
+            setAccessToken(null);
             setRestricted(true);
           } else {
             setError(message);
