@@ -15,7 +15,7 @@ import { SparkLineCard } from "./SparkLineCard";
 import { ConnectionSwitcher } from "./ConnectionSwitcher";
 import { CustomPanels } from "./CustomPanels";
 import { ShareDialog } from "./ShareDialog";
-import type { DashboardPage } from "../lib/api";
+import { updatePageSettings, type DashboardPage } from "../lib/api";
 import { DEFAULT_QUERIES, useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
 import { useSSE } from "../hooks/useSSE";
 import { useAuth } from "../hooks/useAuth";
@@ -120,6 +120,38 @@ export function DashboardView({
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             </button>
             <HealthBadge status={status} />
+            {activePage !== null ? (
+              <button
+                type="button"
+                data-testid="toggle-builtins"
+                title={
+                  activePage.show_builtins === false
+                    ? "Show built-in essentials"
+                    : "Hide built-in essentials"
+                }
+                className={`rounded-lg border px-2 py-1.5 text-[11px] transition ${
+                  activePage.show_builtins === false
+                    ? "border-zinc-800 text-zinc-500 hover:border-emerald-500/40 hover:text-emerald-300"
+                    : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                }`}
+                onClick={() => {
+                  const previous = activePage.show_builtins !== false;
+                  const next = !previous;
+                  setActivePage((current) =>
+                    current === null ? current : { ...current, show_builtins: next }
+                  );
+                  void updatePageSettings(tenantId, activePage.id, {
+                    showBuiltins: next,
+                  }).catch(() => {
+                    setActivePage((current) =>
+                      current === null ? current : { ...current, show_builtins: previous }
+                    );
+                  });
+                }}
+              >
+                {activePage.show_builtins === false ? "Built-ins: off" : "Built-ins: on"}
+              </button>
+            ) : null}
             <button
               type="button"
               data-testid="share-button"
