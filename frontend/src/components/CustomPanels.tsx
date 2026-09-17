@@ -540,8 +540,9 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
     setError(null);
     try {
       const { widget } = await updateWidget(tenantId, editingWidget.id, {
+        kind,
         title: title.trim(),
-        ...(editingWidget.kind !== "hosts_table" ? { promql: promql.trim() } : {}),
+        ...(kind !== "hosts_table" ? { promql: promql.trim() } : {}),
         unit: unit.trim().length > 0 ? unit.trim() : null,
         span,
       });
