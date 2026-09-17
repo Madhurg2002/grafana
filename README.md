@@ -68,19 +68,13 @@ npm test          # backend (Vitest + app.inject) + frontend (RTL) suites
 npm run typecheck # strict tsc across both workspaces
 ```
 
-## Deployment checks
+## Deployment
 
-Vercel and Render deploy independently, and both workflows are restricted to
-the `main` branch. The GitHub Actions workflows
-`.github/workflows/render-deploy.yml` and `.github/workflows/vercel-deploy.yml`
-expose `Render deployment` and `Vercel deployment` checks on pushes to `main`.
-
-Configure the hook URL as the repository secret `RENDER_DEPLOY_HOOK`; never
-commit the URL or its key. Rotate the Render hook if it has been exposed.
-
-Configure these Vercel repository secrets from the Vercel project settings:
-`VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID`. The workflow builds
-and deploys the `frontend` directory as a production deployment.
+Vercel and Render deploy independently through their native Git integrations.
+Connect this repository to each platform, configure both services to deploy
+from `main`, and let each platform report its own deployment status to GitHub.
+No deploy hooks, GitHub Actions deployment workflows, or platform tokens are
+required in this repository.
 
 ## Project Structure
 
