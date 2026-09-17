@@ -6,7 +6,8 @@ import { connectTenant, type ConnectResponse } from "../lib/api";
 export type UpstreamFlavor = "prometheus" | "grafana" | "auto";
 
 export interface ConnectFormProps {
-  onConnected: (tenantId: string) => void;
+  /** Fires after a successful connect; carries the scoped tenant token. */
+  onConnected: (tenantId: string, tenantToken?: string) => void;
   /** When set (signed-in users), the tenant is fixed and hidden from the form. */
   fixedTenantId?: string;
 }
@@ -36,7 +37,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
       setResult(response);
       if (response.ok) {
         setFailedOnce(false);
-        onConnected(tenantId);
+        onConnected(tenantId, response.tenantToken);
       } else {
         setFailedOnce(true);
       }

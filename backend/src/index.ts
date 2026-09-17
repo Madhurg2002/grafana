@@ -8,6 +8,7 @@ import { streamRoutes } from "./routes/stream.js";
 import { authRoutes } from "./routes/auth.js";
 import { shareRoutes } from "./routes/share.js";
 import { profileRoutes } from "./routes/profile.js";
+import { orgRoutes } from "./routes/orgs.js";
 import { getCircuitBreaker } from "./services/circuitBreaker.js";
 import { healthcheck } from "./db/schema.js";
 import { bootstrapDatabase } from "./db/bootstrap.js";
@@ -64,6 +65,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(authRoutes);
   await app.register(shareRoutes);
   await app.register(profileRoutes);
+  await app.register(orgRoutes);
 
   app.setErrorHandler((error, _request, reply) => {
     const statusCode = typeof error.statusCode === "number" ? error.statusCode : 500;

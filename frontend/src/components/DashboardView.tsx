@@ -2,6 +2,7 @@ import {
   Cpu,
   MemoryStick,
   Radio,
+  RefreshCw,
   Server,
   Share2,
 } from "lucide-react";
@@ -28,6 +29,11 @@ function latestScalar(
   return first.value?.value ?? null;
 }
 
+/** Manual refresh broadcast — every live widget re-fetches at once. */
+function triggerRefresh(): void {
+  window.dispatchEvent(new CustomEvent("passthrough:refresh"));
+}
+
 export function DashboardView({
   tenantId,
   embedded = false,
@@ -42,6 +48,7 @@ export function DashboardView({
   const { token } = useAuth();
   const [activeLabel, setActiveLabel] = useState<string>("default");
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  // The built-in strip follows a 1h window; pages override their own.
   const cpu = useInstantMetric(tenantId, DEFAULT_QUERIES.cpu);
   const ram = useInstantMetric(tenantId, DEFAULT_QUERIES.ram);
   const hostsUp = useInstantMetric(tenantId, DEFAULT_QUERIES.hostsUp);
@@ -94,9 +101,18 @@ export function DashboardView({
       {/* In embedded mode the switcher/health/share controls live in a slim
           toolbar row directly under the single app header. */}
       {embedded && token !== null ? (
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 pt-3 sm:px-6">
+        <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-2 px-4 pt-3 sm:px-8">
           <ConnectionSwitcher tenantId={tenantId} onActiveChanged={setActiveLabel} />
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              title="Refresh every widget now"
+              aria-label="Refresh now"
+              onClick={triggerRefresh}
+              className="rounded-lg border border-zinc-800 p-1.5 text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+            >
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            </button>
             <HealthBadge status={status} />
             <button
               type="button"
@@ -110,7 +126,16 @@ export function DashboardView({
           </div>
         </div>
       ) : !embedded && token !== null ? (
-        <div className="mx-auto mt-4 flex max-w-6xl items-center justify-end px-4 sm:px-6">
+        <div className="mx-auto mt-4 flex w-full max-w-[1800px] items-center justify-end gap-2 px-4 sm:px-8">
+          <button
+            type="button"
+            title="Refresh every widget now"
+            aria-label="Refresh now"
+            onClick={triggerRefresh}
+            className="rounded-lg border border-zinc-800 p-1.5 text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          </button>
           <button
             type="button"
             data-testid="share-button"
@@ -126,7 +151,8 @@ export function DashboardView({
         <ShareDialog tenantId={tenantId} onClose={() => setShareDialogOpen(false)} />
       ) : null}
 
-      <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      {/* Built-in node-exporter essentials (base layer). */}
+      <main className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-8">
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatusCard
             title="Hosts Up"
@@ -167,78 +193,7 @@ export function DashboardView({
           />
         </section>
 
-        {hostsUp.data !== null && hostsUp.data.result.length > 0 ? (
-          <section className="mt-6" data-testid="hosts-table">
-            <h2 className="mb-2 text-sm font-semibold text-zinc-300">
-              Scrape targets
-              <span className="ml-2 text-xs font-normal text-zinc-500">
-                every endpoint your Prometheus watches — up means it responded
-                to the last scrape
-              </span>
-            </h2>
-            {/* Formula transparency: the exact query behind this table. */}
-            <p
-              className="mb-2 truncate font-mono text-[10px] text-zinc-600"
-              title={`Query powering this table: ${DEFAULT_QUERIES.hostsUp}`}
-            >
-              <span className="text-zinc-500">query:</span> {DEFAULT_QUERIES.hostsUp}
-            </p>
-            <div className="overflow-hidden rounded-xl border border-zinc-800/80">
-              <table className="w-full text-left text-xs">
-              <thead className="bg-zinc-900/70 text-zinc-400">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Instance</th>
-                  <th className="px-4 py-2 font-medium">Job</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hostsUp.data.result.slice(0, 100).map((entry) => {
-                  const item = entry as {
-                    metric?: Record<string, string>;
-                    value?: { value: number };
-                  };
-                  const up = item.value?.value ?? 0;
-                  return (
-                    <tr
-                      key={`${item.metric?.job ?? "?"}/${item.metric?.instance ?? "?"}`}
-                      className="border-t border-zinc-800/60"
-                    >
-                      <td className="max-w-64 truncate px-4 py-2 font-mono text-zinc-200">
-                        <span
-                          title={item.metric?.instance ?? "unknown"}
-                          className="block truncate"
-                        >
-                          {item.metric?.instance ?? "unknown"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-zinc-400">
-                        <span title={item.metric?.job ?? "unknown"} className="block truncate">
-                          {item.metric?.job ?? "unknown"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={up === 1 ? "text-emerald-300" : "text-rose-300"}
-                          title={
-                            up === 1
-                              ? "Last scrape succeeded"
-                              : "Last scrape failed or timed out"
-                          }
-                        >
-                          {up === 1 ? "up" : "down"}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
-          </section>
-        ) : null}
-
-        {token !== null ? <CustomPanels tenantId={tenantId} /> : null}
+        {token !== null ? <CustomPanels tenantId={tenantId} wide /> : null}
 
         <motion.p
           initial={{ opacity: 0 }}

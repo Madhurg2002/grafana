@@ -19,6 +19,8 @@ export interface ConnectResponse {
   latencyMs: number;
   upstreamType?: "prometheus" | "grafana";
   detail?: string;
+  /** Tenant-scoped token: read access to this workspace without an account. */
+  tenantToken?: string;
   error?: string;
 }
 
@@ -50,9 +52,17 @@ export function apiBase(): string {
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
+  // Tenant-bearing endpoints (query/stream/panels) accept the user session
+  // OR the workspace-scoped token — send whichever the client has.
+  const userToken = getToken();
+  const tenantToken = loadTenantToken();
+  const auth = userToken ?? tenantToken;
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(auth !== null ? { authorization: `Bearer ${auth}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   const payload = (await response.json()) as T & { error?: string };
@@ -60,6 +70,16 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
     throw new Error(payload.error ?? `Request failed with ${response.status}`);
   }
   return payload;
+}
+
+const TENANT_TOKEN_STORAGE_KEY = "passthrough.tenantToken";
+
+function loadTenantToken(): string | null {
+  try {
+    return localStorage.getItem(TENANT_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export function connectTenant(
@@ -128,13 +148,14 @@ export function setToken(token: string | null): void {
   }
 }
 
-async function authedJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function authedJson<T>(path: string, init: RequestInit = {}, extraHeaders: Record<string, string> = {}): Promise<T> {
   const token = getToken();
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
       ...(token !== null ? { authorization: `Bearer ${token}` } : {}),
+      ...extraHeaders,
       ...init.headers,
     },
   });
@@ -153,6 +174,14 @@ async function authedJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload;
 }
 
+/**
+ * Extra auth headers a caller can pass to `authedJson` — used to send the
+ * workspace-scoped token on tenant endpoints when the user has no session.
+ */
+export function scopedHeaders(tenantToken: string | null): Record<string, string> {
+  return tenantToken !== null ? { authorization: `Bearer ${tenantToken}` } : {};
+}
+
 export function signup(email: string, password: string, displayName?: string): Promise<AuthResponse> {
   return postJson<AuthResponse>("/api/auth/signup", {
     email,
@@ -169,7 +198,9 @@ export type ShareAccess =
   | "anyone_view"
   | "anyone_edit"
   | "email_view"
-  | "email_edit";
+  | "email_edit"
+  | "org_view"
+  | "org_edit";
 
 export interface ShareLink {
   id: string;
@@ -374,11 +405,20 @@ export interface DashboardPage {
   tenant_id: string;
   name: string;
   position: number;
+  is_home?: boolean;
+  default_span?: number;
+  refresh_seconds?: number;
+  window_minutes?: number;
 }
 
-export function listPages(tenantId: string): Promise<{ pages: DashboardPage[] }> {
+export function listPages(
+  tenantId: string,
+  tenantToken?: string | null
+): Promise<{ pages: DashboardPage[] }> {
   return authedJson<{ pages: DashboardPage[] }>(
-    `/api/pages/${encodeURIComponent(tenantId)}`
+    `/api/pages/${encodeURIComponent(tenantId)}`,
+    {},
+    scopedHeaders(tenantToken ?? loadTenantToken())
   );
 }
 
@@ -466,4 +506,217 @@ export function fetchMetricSeries(
     series: Array<Record<string, string>>;
     cached: boolean;
   }>(`/api/promql/series/${encodeURIComponent(tenantId)}/${encodeURIComponent(metric)}`);
+}
+
+// ---------------------------------------------------------------------------
+// Page widgets — everything visible on a dashboard page (migration 009)
+// ---------------------------------------------------------------------------
+
+export type WidgetKind = "stat" | "gauge" | "sparkline" | "hosts_table";
+
+export interface PageWidget {
+  id: number;
+  page_id: number;
+  tenant_id: string;
+  kind: WidgetKind;
+  title: string;
+  promql: string;
+  unit: string | null;
+  span: number;
+  position: number;
+  created_at: string;
+}
+
+export function listWidgets(
+  tenantId: string,
+  pageId: number,
+  tenantToken?: string | null
+): Promise<{ widgets: PageWidget[] }> {
+  return authedJson<{ widgets: PageWidget[] }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/widgets`,
+    {},
+    scopedHeaders(tenantToken ?? loadTenantToken())
+  );
+}
+
+export function createWidget(
+  tenantId: string,
+  pageId: number,
+  widget: {
+    kind: WidgetKind;
+    title: string;
+    promql?: string;
+    unit?: string;
+    span?: number;
+  },
+  tenantToken?: string | null
+): Promise<{ widget: PageWidget }> {
+  return authedJson<{ widget: PageWidget }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/widgets`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        kind: widget.kind,
+        title: widget.title,
+        ...(widget.promql !== undefined && widget.promql.length > 0
+          ? { promql: widget.promql }
+          : {}),
+        ...(widget.unit !== undefined && widget.unit.length > 0
+          ? { unit: widget.unit }
+          : {}),
+        ...(widget.span !== undefined ? { span: widget.span } : {}),
+      }),
+    },
+    scopedHeaders(tenantToken ?? loadTenantToken())
+  );
+}
+
+export function updateWidget(
+  tenantId: string,
+  widgetId: number,
+  patch: { title?: string; promql?: string; unit?: string | null; span?: number; kind?: WidgetKind },
+  tenantToken?: string | null
+): Promise<{ widget: PageWidget }> {
+  return authedJson<{ widget: PageWidget }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/widgets/${widgetId}`,
+    { method: "PATCH", body: JSON.stringify(patch) },
+    scopedHeaders(tenantToken ?? loadTenantToken())
+  );
+}
+
+export function deleteWidget(
+  tenantId: string,
+  widgetId: number,
+  tenantToken?: string | null
+): Promise<{ removed: boolean }> {
+  return authedJson<{ removed: boolean }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/widgets/${widgetId}`,
+    { method: "DELETE" },
+    scopedHeaders(tenantToken ?? loadTenantToken())
+  );
+}
+
+export function reorderWidgets(
+  tenantId: string,
+  pageId: number,
+  positions: Array<{ id: number; position: number }>,
+  tenantToken?: string | null
+): Promise<{ ok: boolean }> {
+  return authedJson<{ ok: boolean }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/widgets/reorder`,
+    { method: "POST", body: JSON.stringify({ positions }) },
+    scopedHeaders(tenantToken ?? loadTenantToken())
+  );
+}
+
+export function makePageHome(
+  tenantId: string,
+  pageId: number,
+  tenantToken?: string | null
+): Promise<{ ok: boolean }> {
+  return authedJson<{ ok: boolean }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/home`,
+    { method: "POST" },
+    scopedHeaders(tenantToken ?? loadTenantToken())
+  );
+}
+
+export function updatePageSettings(
+  tenantId: string,
+  pageId: number,
+  settings: { defaultSpan?: number; refreshSeconds?: number; windowMinutes?: number },
+  tenantToken?: string | null
+): Promise<{ ok: boolean }> {
+  return authedJson<{ ok: boolean }>(
+    `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/settings`,
+    { method: "PATCH", body: JSON.stringify(settings) },
+    scopedHeaders(tenantToken ?? loadTenantToken())
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Organizations — shared workspaces so sharing covers the whole team
+// ---------------------------------------------------------------------------
+
+export interface OrgSummary {
+  id: string;
+  name: string;
+  role: "owner" | "member";
+  inviteCode?: string;
+}
+
+export interface OrgMember {
+  email: string;
+  displayName: string | null;
+  role: "owner" | "member";
+}
+
+export function listOrgs(): Promise<{ orgs: OrgSummary[] }> {
+  return authedJson<{ orgs: OrgSummary[] }>("/api/orgs");
+}
+
+export function createOrg(name: string): Promise<OrgSummary> {
+  return authedJson<OrgSummary>("/api/orgs", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function joinOrg(inviteCode: string): Promise<{ id: string; name: string; role: string }> {
+  return authedJson<{ id: string; name: string; role: string }>("/api/orgs/join", {
+    method: "POST",
+    body: JSON.stringify({ inviteCode }),
+  });
+}
+
+export function listOrgMembers(orgId: string): Promise<{ members: OrgMember[] }> {
+  return authedJson<{ members: OrgMember[] }>(
+    `/api/orgs/${encodeURIComponent(orgId)}/members`
+  );
+}
+
+export function rotateInviteCode(orgId: string): Promise<{ inviteCode: string }> {
+  return authedJson<{ inviteCode: string }>(
+    `/api/orgs/${encodeURIComponent(orgId)}/invite/rotate`,
+    { method: "POST" }
+  );
+}
+
+export function attachTenantToOrg(orgId: string, tenantId: string): Promise<{ attached: boolean }> {
+  return authedJson<{ attached: boolean }>("/api/orgs/attach", {
+    method: "POST",
+    body: JSON.stringify({ orgId, tenantId }),
+  });
+}
+
+export function detachTenantFromOrg(tenantId: string): Promise<{ attached: boolean }> {
+  return authedJson<{ attached: boolean }>("/api/orgs/attach", {
+    method: "DELETE",
+    body: JSON.stringify({ tenantId }),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Account settings
+// ---------------------------------------------------------------------------
+
+export function changePassword(
+  currentPassword: string,
+  newPassword: string
+): Promise<{ updated: boolean }> {
+  return authedJson<{ updated: boolean }>("/api/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export function updateProfile(displayName: string): Promise<{
+  user: { id: string; email: string; displayName: string | null };
+}> {
+  return authedJson<{
+    user: { id: string; email: string; displayName: string | null };
+  }>("/api/auth/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ displayName }),
+  });
 }
