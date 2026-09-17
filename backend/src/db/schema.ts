@@ -44,14 +44,65 @@ export interface UpsertConnectionInput {
 
 const globalForPool = globalThis as unknown as { __PG_POOL__?: Pool };
 
+/**
+ * Query observability (dev/diagnostic aid, off by default):
+ *   DB_LOG_SLOW_MS=100  log queries slower than this (default 100ms when logging enabled)
+ *   DB_LOG_QUERIES=1    log every query (noisy — dev only)
+ * Set DB_LOG_QUERIES or DB_LOG_SLOW_MS to enable; production defaults to
+ * silence so logs stay about the app, not the ORM.
+ */
+const dbLogAll = process.env.DB_LOG_QUERIES === "1";
+const dbLogSlowMs = process.env.DB_LOG_SLOW_MS === undefined ? null : Number(process.env.DB_LOG_SLOW_MS);
+let dbQueryCount = 0;
+
+/** Total queries executed through the pool since process start (diagnostics). */
+export function getDbQueryCount(): number {
+  return dbQueryCount;
+}
+
+function observeQuery(text: string, durationMs: number): void {
+  dbQueryCount += 1;
+  const firstLine = text.replace(/\s+/g, " ").trim().slice(0, 120);
+  if (dbLogAll) {
+    console.log(`[db] ${durationMs.toFixed(1)}ms ${firstLine}`);
+  } else if (dbLogSlowMs !== null && durationMs >= dbLogSlowMs) {
+    console.warn(`[db:slow] ${durationMs.toFixed(0)}ms ${firstLine}`);
+  }
+}
+
 export function getPool(): Pool {
   if (!globalForPool.__PG_POOL__) {
-    globalForPool.__PG_POOL__ = new Pool({
+    const pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
     });
+    // Instrument the pool once — every helper (schema/users/alerts) goes
+    // through pool.query, so this observes all DB activity. Only promise-
+    // style calls are timed; callback-style (unused in this codebase) passes
+    // through untouched.
+    const originalQuery = pool.query.bind(pool);
+    const instrumented = function query(
+      this: Pool,
+      ...args: unknown[]
+    ): unknown {
+      const last = args[args.length - 1];
+      if (typeof last === "function") {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (originalQuery as (...a: unknown[]) => unknown).apply(pool, args);
+      }
+      const started = Date.now();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result = (originalQuery as (...a: unknown[]) => Promise<unknown>).apply(pool, args);
+      void result.then(
+        () => observeQuery(String(args[0] ?? ""), Date.now() - started),
+        () => observeQuery(String(args[0] ?? ""), Date.now() - started)
+      );
+      return result;
+    };
+    pool.query = instrumented as typeof pool.query;
+    globalForPool.__PG_POOL__ = pool;
   }
   return globalForPool.__PG_POOL__;
 }
