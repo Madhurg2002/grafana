@@ -100,12 +100,12 @@ const WIDGET_DEFAULTS: Record<WidgetKind, { title: string; promql: string; unit:
  */
 function spanClass(span: number, wide = false): string {
   if (span >= 3) {
-    return wide ? "col-span-1 md:col-span-2 2xl:col-span-6" : "col-span-1 2xl:col-span-3 xl:col-span-2";
+    return wide ? "col-span-1 md:col-span-2 2xl:col-span-3 3xl:col-span-6" : "col-span-1 2xl:col-span-3 xl:col-span-2";
   }
   if (span === 2) {
-    return wide ? "col-span-1 md:col-span-2 2xl:col-span-3" : "col-span-1 2xl:col-span-2";
+    return wide ? "col-span-1 md:col-span-2 2xl:col-span-2 3xl:col-span-4" : "col-span-1 2xl:col-span-2";
   }
-  return wide ? "col-span-1 md:col-span-1 2xl:col-span-2" : "col-span-1";
+  return wide ? "col-span-1 3xl:col-span-2" : "col-span-1";
 }
 
 /**

@@ -25,6 +25,14 @@ function formatBytes(value: number): string {
   return `${value.toFixed(0)} B/s`;
 }
 
+export function formatMetricValue(value: number, unit?: string): string {
+  if (unit === "bytes/s") {
+    return formatBytes(value);
+  }
+  const rounded = Number.isInteger(value) ? value.toString() : value.toFixed(2);
+  return unit !== undefined && unit.length > 0 ? `${rounded} ${unit}` : rounded;
+}
+
 export function formatChartTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString([], {
     hour: "numeric",
@@ -73,7 +81,7 @@ export function SparkLineCard({
           {title}
         </span>
         <span className="text-sm font-medium tabular-nums text-zinc-200">
-          {unit === "bytes/s" ? formatBytes(latest) : latest.toFixed(2)}
+          {formatMetricValue(latest, unit)}
         </span>
       </div>
       <div className="mt-3 h-28">
@@ -101,6 +109,10 @@ export function SparkLineCard({
                 fontSize: 12,
               }}
               labelFormatter={(label: number) => formatChartTime(label)}
+              formatter={(value: number, name: string) => [
+                formatMetricValue(value, unit),
+                name,
+              ]}
             />
             {series.map((current, index) => (
               <Area
