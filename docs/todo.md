@@ -11,25 +11,26 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
-| Alerting (threshold → notifier) | The biggest Grafana-parity gap. Needs an `alerts` table (migration 010), a notifier service (webhook first; email waits for prod), and alert widgets in the UI. | Next feature cycle — start once the page-widget UX settles |
-| Apply migrations 008–010 on the production DB | Pre-deploy command (`npm run db:migrate`) is wired in `render.yaml` (PR #9) — 008 orgs, 009 page_widgets, and 010 per-page built-ins apply automatically at the next production deploy. Verify orgs/pages/built-ins toggle right after it. | At the next deploy — verify, then remove this row |
-| Click-to-filter host drill-down | Hosts-table widget renders, but clicking a host doesn't scope gauges/sparklines to it. | With the alerting cycle (same dashboard surface) |
+| Item | Why it matters | When / trigger |
+| :--- | :--- | :--- |
+| Apply migrations 008–011 on the production DB | Pre-deploy command (`npm run db:migrate`) is wired in `render.yaml` (PR #9) — 008 orgs, 009 page_widgets, 010 per-page built-ins, and 011 alerts apply automatically at the next production deploy. Verify orgs/pages/alerts right after it. | At the next deploy — verify, then remove this row |
 
 ## 🟠 Soon — hardening while the app is in real use
 
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
-| Secret rotation (`ENCRYPTION_KEY` / `JWT_SECRET`) | Single-key design; rotation invalidates stored upstream tokens. Needs `v1:` key-versioning prefixes before any real credential churn. | Before onboarding users with many stored connections |
+| Item | Why it matters | When / trigger |
+| :--- | :--- | :--- |
 | `render.yaml` infra validation | Spec exists; the real deploy is dashboard-configured. Validate once hosting lands on Render, then delete or keep as reference. | At first Render deploy attempt |
-| Share-view parity with page widgets | Share snapshots still show the fixed built-in set, not the tenant's composed pages. | After alerting — same snapshot endpoint work |
+| Alert webhook deliverability check | The evaluator posts to a user-supplied URL with retries; validate a real receiver (Slack/Discord webhook or similar) end-to-end. | First time someone configures a real webhook |
 
 ## 🟢 Later — explicitly deferred until prod-ready
 
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
-| Email verification on signup | New accounts are trusted immediately today. Needs a `users.email_verified` column + a signed verification-token flow, all of which requires **sending mail first**. | With the Resend setup below — same email plumbing lands together |
-| Password reset via email | Currently the only recovery is Profile → Change password (requires knowing the current password). A forgotten password is unrecoverable without email. Needs a reset-token table (migration), `POST /api/auth/request-reset` + `POST /api/auth/reset` endpoints, and a `/reset` page. | With the Resend setup below — same email plumbing lands together |
-| Invite emails (Resend) | Plumbing exists (`services/email.ts`, `/api/share/:id/invite`) and stays off while `RESEND_API_KEY` is unset. Non-prod apps must not send mail. Verification + reset build on this. | When the app is declared prod-ready + domain is verified with Resend |
+| Email verification on signup | New accounts are trusted immediately today. Needs a `users.email_verified` column + a signed verification-token flow, all of which requires **sending mail first**. | With the Brevo setup below — same email plumbing lands together |
+| Password reset via email | Currently the only recovery is Profile → Change password (requires knowing the current password). A forgotten password is unrecoverable without email. Needs a reset-token table (migration), `POST /api/auth/request-reset` + `POST /api/auth/reset` endpoints, and a `/reset` page. | With the Brevo setup below — same email plumbing lands together |
+| Invite emails (Brevo) | Plumbing exists (`services/email.ts` via Brevo API, `/api/share/:id/invite`) and stays off while `BREVO_API_KEY`/`BREVO_FROM_EMAIL` are unset. Non-prod apps must not send mail. Verification + reset build on this. | When the app is declared prod-ready + Brevo sender is verified |
 | Production analytics / error tracking | No Sentry/analytics wired. | At public launch |
 | Live-upstream suite in CI | The gated suite (`TEST_PROMETHEUS_URL`) exists; wire it into a scheduled CI job with the demo upstream + a Postgres service. | When CI minutes are available |
 

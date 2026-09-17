@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
   GripVertical,
   LayoutDashboard,
@@ -16,6 +16,7 @@ import { SparkLineCard } from "./SparkLineCard";
 import { StatusCard } from "./StatusCard";
 import { PromqlHelper } from "./PromqlHelper";
 import { MetricBrowser } from "./MetricBrowser";
+import { AlertManager } from "./AlertManager";
 import {
   createPage,
   createWidget,
@@ -34,6 +35,10 @@ import {
 import { useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
 
 const PALETTE = ["#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#a78bfa", "#38bdf8"];
+
+interface WidgetWithHost extends PageWidget {
+  onSelectHost?: (host: string | null) => void;
+}
 
 interface Props {
   tenantId: string;
@@ -59,18 +64,49 @@ const REFRESH_OPTIONS = [
   { seconds: 300, label: "5m" },
 ];
 
-/** Maps a widget's grid span to responsive Tailwind classes. */
-function spanClass(span: number): string {
-  if (span >= 3) return "col-span-1 2xl:col-span-3 xl:col-span-2";
-  if (span === 2) return "col-span-1 2xl:col-span-2";
-  return "col-span-1";
+/**
+ * Maps a widget's grid span to responsive classes. In wide mode the grid is
+ * 6 columns at 2xl (1536px+) and up, so a very large monitor shows a very
+ * large number of charts at once (wall-of-graphs like Grafana's TV view).
+ */
+function spanClass(span: number, wide = false): string {
+  if (span >= 3) {
+    return wide ? "col-span-1 md:col-span-2 2xl:col-span-6" : "col-span-1 2xl:col-span-3 xl:col-span-2";
+  }
+  if (span === 2) {
+    return wide ? "col-span-1 md:col-span-2 2xl:col-span-3" : "col-span-1 2xl:col-span-2";
+  }
+  return wide ? "col-span-1 md:col-span-1 2xl:col-span-2" : "col-span-1";
 }
 
-/** Live widget: polls its own instant/range query. */
-function LiveWidget({ widget, index }: { widget: PageWidget; index: number }): JSX.Element {
+/**
+ * Live widget: polls its own instant/range query. When a host is selected
+ * (hosts-table drill-down), the query is scoped with an instance selector.
+ */
+function LiveWidget({
+  widget,
+  index,
+  selectedHost,
+}: {
+  widget: WidgetWithHost;
+  index: number;
+  selectedHost: string | null;
+}): JSX.Element {
   const stroke = PALETTE[index % PALETTE.length];
-  const instant = useInstantMetric(widget.tenant_id, widget.promql);
-  const range = useRangeMetric(widget.tenant_id, widget.promql);
+  // Escapes a label value for safe inclusion inside PromQL double quotes.
+  const promqlEscape = (value: string): string => value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
+  // Scope to the selected host unless the query already filters instance.
+  const scoped = selectedHost === null ? null : promqlEscape(selectedHost);
+  const query =
+    scoped === null || widget.promql.includes("instance=") || widget.promql.length === 0
+      ? widget.promql
+      : /\{\s*\}/.test(widget.promql)
+        ? widget.promql.replace(/\{\s*\}/, `{instance="${scoped}"}`)
+        : widget.promql.includes("{")
+          ? widget.promql.replace(/\{/, `{instance="${scoped}",`)
+          : `${widget.promql}{instance="${scoped}"}`;
+  const instant = useInstantMetric(widget.tenant_id, query);
+  const range = useRangeMetric(widget.tenant_id, query);
 
   if (widget.kind === "sparkline") {
     return (
@@ -79,7 +115,7 @@ function LiveWidget({ widget, index }: { widget: PageWidget; index: number }): J
         unit={widget.unit ?? ""}
         series={range.series}
         stroke={stroke}
-        query={widget.promql}
+        query={query}
       />
     );
   }
@@ -90,12 +126,18 @@ function LiveWidget({ widget, index }: { widget: PageWidget; index: number }): J
         title={widget.title}
         percent={clamp(value)}
         level={levelFor(value)}
-        query={widget.promql}
+        query={query}
       />
     );
   }
   if (widget.kind === "hosts_table") {
-    return <HostsTable tenantId={widget.tenant_id} />;
+    return (
+      <HostsTable
+        tenantId={widget.tenant_id}
+        selectedHost={selectedHost}
+        onSelectHost={widget.onSelectHost ?? (() => undefined)}
+      />
+    );
   }
   const stat = firstScalar(instant.data);
   return (
@@ -105,21 +147,41 @@ function LiveWidget({ widget, index }: { widget: PageWidget; index: number }): J
       unit={widget.unit ?? ""}
       level="emerald"
       icon={LayoutDashboard}
-      subtitle={widget.promql.length > 40 ? `${widget.promql.slice(0, 40)}…` : widget.promql}
+      subtitle={query.length > 40 ? `${query.slice(0, 40)}…` : query}
     />
   );
 }
 
-/** The scrape-target table as a widget (query transparency included). */
-function HostsTable({ tenantId }: { tenantId: string }): JSX.Element {
+/** The scrape-target table as a widget (query transparency + drill-down). */
+function HostsTable({
+  tenantId,
+  selectedHost,
+  onSelectHost,
+}: {
+  tenantId: string;
+  selectedHost: string | null;
+  onSelectHost: (host: string | null) => void;
+}): JSX.Element {
   const hostsUp = useInstantMetric(tenantId, "up");
   return (
     <section className="glass-card p-4" data-testid="hosts-widget">
       <h2 className="mb-2 text-sm font-semibold text-zinc-300">
         Scrape targets
         <span className="ml-2 text-xs font-normal text-zinc-500">
-          every endpoint your Prometheus watches — up means it responded to the last scrape
+          {selectedHost === null
+            ? "click a host to scope gauges/sparklines to it"
+            : `scoped to ${selectedHost}`}
         </span>
+        {selectedHost !== null ? (
+          <button
+            type="button"
+            title="Clear the host filter — show all hosts again"
+            className="ml-2 rounded border border-zinc-700 px-1.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+            onClick={() => onSelectHost(null)}
+          >
+            clear
+          </button>
+        ) : null}
       </h2>
       <p
         className="mb-2 truncate font-mono text-[10px] text-zinc-600"
@@ -143,14 +205,24 @@ function HostsTable({ tenantId }: { tenantId: string }): JSX.Element {
                 value?: { value: number };
               };
               const up = item.value?.value ?? 0;
+              const instance = item.metric?.instance ?? "unknown";
+              const isSel = selectedHost === instance;
               return (
                 <tr
-                  key={`${item.metric?.job ?? "?"}/${item.metric?.instance ?? "?"}/${i}`}
-                  className="border-t border-zinc-800/60"
+                  key={`${item.metric?.job ?? "?"}/${instance}/${i}`}
+                  className={`border-t border-zinc-800/60 cursor-pointer transition ${
+                    isSel ? "bg-emerald-500/10" : "hover:bg-zinc-900/60"
+                  }`}
+                  title={
+                    isSel
+                      ? `Click to clear — gauges/sparklines currently scoped to ${instance}`
+                      : `Click to scope gauges/sparklines to ${instance}`
+                  }
+                  onClick={() => onSelectHost(isSel ? null : instance)}
                 >
                   <td className="max-w-64 truncate px-4 py-2 font-mono text-zinc-200">
-                    <span title={item.metric?.instance ?? "unknown"} className="block truncate">
-                      {item.metric?.instance ?? "unknown"}
+                    <span title={instance} className={`block truncate ${isSel ? "text-emerald-300" : ""}`}>
+                      {instance}
                     </span>
                   </td>
                   <td className="px-4 py-2 text-zinc-400">{item.metric?.job ?? "unknown"}</td>
@@ -219,7 +291,11 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
   const [error, setError] = useState<string | null>(null);
   const [renamingPage, setRenamingPage] = useState(false);
   const [pageNameDraft, setPageNameDraft] = useState("");
+  const [selectedHost, setSelectedHost] = useState<string | null>(null);
   const refreshTimerRef = useRef<number | null>(null);
+  const promqlInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const suggestRef = useRef<(() => void) | null>(null);
+  const suggestKeyDownRef = useRef<((e: React.KeyboardEvent<HTMLTextAreaElement>) => void) | null>(null);
 
   const activePage = pages.find((p) => p.id === activePageId) ?? pages[0] ?? null;
 
@@ -471,7 +547,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
   }
 
   const containerClass = wide
-    ? "mx-auto w-full max-w-[1800px] px-4 sm:px-8"
+    ? "mx-auto w-full max-w-none px-4 sm:px-8" // wide mode = use the whole screen (TV wall)
     : "mx-auto w-full max-w-6xl px-4 sm:px-6";
 
   return (
@@ -793,20 +869,35 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
           {kind !== "hosts_table" ? (
             <div className="relative">
               <textarea
+                ref={promqlInputRef}
                 value={promql}
                 onChange={(e) => setPromql(e.target.value)}
+                onKeyUp={() => suggestRef.current?.()}
+                onClick={() => suggestRef.current?.()}
+                onKeyDown={(e) => suggestKeyDownRef.current?.(e)}
                 placeholder='PromQL — e.g. rate(node_network_receive_bytes_total{device=~"eth.*|ens.*|eno.*|bond.*"}[5m])'
                 title="PromQL query — instant for stat/gauge, range for sparkline. The backend normalizer enforces device filters, MemAvailable, and [5m]+ rate windows."
                 rows={2}
                 className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
               />
               <p className="mt-0.5 text-[10px] text-zinc-600">
-                One PromQL expression. Sparklines render a time range; stat/gauge
-                take the latest value. Unsafe queries are auto-corrected by the
-                backend normalizer.
+                One PromQL expression. ↑↓/Enter/Esc navigate suggestions like a
+                code editor. Sparklines render a time range; stat/gauge take the
+                latest value. Unsafe queries are auto-corrected by the normalizer.
               </p>
               <div className="mt-1 flex items-center gap-3">
-                <PromqlHelper tenantId={tenantId} value={promql} onChange={setPromql} />
+                <PromqlHelper
+                  tenantId={tenantId}
+                  value={promql}
+                  onChange={setPromql}
+                  inputRef={promqlInputRef as RefObject<HTMLTextAreaElement | null>}
+                  registerTrigger={(fn) => {
+                    suggestRef.current = fn;
+                  }}
+                  registerKeyDown={(fn) => {
+                    suggestKeyDownRef.current = fn;
+                  }}
+                />
                 <button
                   type="button"
                   title="Open the metric browser — pick a metric and its live series to build a query"
@@ -859,14 +950,16 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
       ) : null}
 
       <div
-        className={`mt-3 grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3`}
+        className={`mt-3 grid grid-cols-1 gap-4 ${
+          wide ? "md:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-6" : "lg:grid-cols-2 2xl:grid-cols-3"
+        }`}
         data-testid="panel-grid"
       >
         {widgets.map((widget, index) => (
           <div
             key={widget.id}
             className={`group relative transition-opacity ${
-              spanClass(widget.span)
+              spanClass(widget.span, wide)
             } ${dragIndex === index ? "opacity-40" : ""}`}
             draggable
             onDragStart={() => setDragIndex(index)}
@@ -886,7 +979,11 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
             >
               <GripVertical className="h-3.5 w-3.5" />
             </span>
-            <LiveWidget widget={widget} index={index} />
+            <LiveWidget
+              widget={{ ...widget, onSelectHost: setSelectedHost } as WidgetWithHost}
+              index={index}
+              selectedHost={selectedHost}
+            />
             <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
               <button
                 type="button"
@@ -953,6 +1050,8 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
           onClose={() => setBrowserOpen(false)}
         />
       ) : null}
+
+      <AlertManager tenantId={tenantId} />
     </section>
   );
 }

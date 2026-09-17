@@ -9,6 +9,8 @@ import { authRoutes } from "./routes/auth.js";
 import { shareRoutes } from "./routes/share.js";
 import { profileRoutes } from "./routes/profile.js";
 import { orgRoutes } from "./routes/orgs.js";
+import { alertRoutes } from "./routes/alerts.js";
+import { getAlertEvaluator } from "./services/alertEvaluator.js";
 import { getCircuitBreaker } from "./services/circuitBreaker.js";
 import { healthcheck } from "./db/schema.js";
 import { bootstrapDatabase } from "./db/bootstrap.js";
@@ -66,6 +68,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(shareRoutes);
   await app.register(profileRoutes);
   await app.register(orgRoutes);
+  await app.register(alertRoutes);
 
   app.setErrorHandler((error, _request, reply) => {
     const statusCode = typeof error.statusCode === "number" ? error.statusCode : 500;
@@ -91,6 +94,9 @@ export async function startServer(): Promise<void> {
     await app.close();
     process.exit(1);
   }
+  // Threshold-alert evaluator: one background scan loop for all tenants.
+  getAlertEvaluator().start();
+  app.log.info("Alert evaluator started");
   try {
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Backend listening on :${env.PORT}`);

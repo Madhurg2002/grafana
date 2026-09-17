@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type RefObject } from "react";
 import { Sparkles, X } from "lucide-react";
 import {
   fetchLabelValues,
@@ -11,6 +11,12 @@ interface Props {
   tenantId: string;
   value: string;
   onChange: (next: string) => void;
+  /** The query textarea this helper annotates — anchors the floating list. */
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
+  /** Parent registers a callback to recompute the overlay position on caret moves. */
+  registerTrigger?: (fn: () => void) => void;
+  /** Parent registers the textarea keydown handler (IDE-style keyboard nav). */
+  registerKeyDown?: (fn: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void) => void;
 }
 
 /** PromQL vocabulary used to predict what the user is typing. */
@@ -31,22 +37,22 @@ const FUNCTIONS: Array<{ name: string; hint: string }> = [
 
 const LABEL_NAMES = ["instance", "job", "device", "mode", "method", "status", "endpoint", "le", "quantile"];
 
-const MAX_INLINE_SUGGESTIONS = 5;
+const MAX_VISIBLE = 8;
 
 /**
- * PromQL helper for the panel builder: curated recipes (filtered to what the
- * upstream actually has) plus PREDICTIVE inline autocomplete. The full helper
- * (recipes + metric catalog + series browser) opens as a centered MODAL so it
- * can never be clipped by panel/card bounds; the as-you-type suggestions stay
- * anchored to the input but are width/height capped and scroll internally.
+ * Code-editor-style PromQL autocomplete: as the user types, a VERTICAL
+ * suggestion list floats above everything (fixed overlay, like an IDE's
+ * intellisense) with ↑/↓ keyboard navigation, Enter to accept, Escape to
+ * dismiss. Nothing can clip it and it never disturbs the form layout.
  */
-export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element {
+export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrigger, registerKeyDown }: Props): JSX.Element {
   const [recipes, setRecipes] = useState<PromqlRecipe[]>([]);
   const [metricNames, setMetricNames] = useState<string[]>([]);
   const [labelValues, setLabelValues] = useState<Record<string, string[]>>({});
   const [showHelper, setShowHelper] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const [highlight, setHighlight] = useState(0);
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -68,17 +74,12 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
   // ---- Predictive context analysis ---------------------------------------
   const prediction = useMemo(() => {
     const cursorPrefix = value; // treat end-of-input as the cursor
-    // Inside a label selector? {metric{lab…  → suggest label names/values.
     const inSelector = /\{[^}]*$/.test(cursorPrefix);
-    // Partial word being typed right now.
     const wordMatch = /([a-zA-Z_:][a-zA-Z0-9_:]*)$/.exec(cursorPrefix);
     const partial = wordMatch?.[1] ?? "";
-
-    // The metric a selector belongs to (…metric{...).
     const selectorMetric = /([a-zA-Z_:][a-zA-Z0-9_:]*)\{[^}]*$/.exec(cursorPrefix)?.[1] ?? null;
 
     if (inSelector) {
-      // After `label=` or `label=~` suggest matching VALUES.
       const afterEquals = /= ?~? ?"([^"]*)$/.exec(cursorPrefix);
       if (afterEquals !== null && selectorMetric !== null) {
         return { mode: "labelValue" as const, partial: afterEquals[1], selectorMetric };
@@ -87,7 +88,6 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
       return { mode: "labelName" as const, partial: labelPartial, selectorMetric };
     }
 
-    // Which functions make sense: after an aggregation opener or anywhere.
     const afterOpen = /\(\s*$/.test(cursorPrefix);
     if (partial.length > 0) {
       return { mode: "word" as const, partial, afterOpen };
@@ -128,12 +128,11 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
     if (prediction.mode === "word") {
       const metricHits = metricNames
         .filter((m) => m.toLowerCase().startsWith(p) || m.toLowerCase().includes(p))
-        .slice(0, 4)
+        .slice(0, 6)
         .map((m) => ({ kind: "metric" as const, text: m, hint: "metric on this upstream" }));
       const fnHits = FUNCTIONS.filter((f) => f.name.toLowerCase().startsWith(p))
-        .slice(0, 2)
+        .slice(0, 4)
         .map((f) => ({ kind: "function" as const, text: f.name, hint: f.hint }));
-      // Rank: exact-prefix matches first, metrics before functions.
       return [...metricHits, ...fnHits];
     }
     if (prediction.mode === "labelName") {
@@ -141,11 +140,44 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
     }
     if (prediction.mode === "labelValue" && activeMetric !== null) {
       return (labelValues[activeMetric] ?? [])
-        .slice(0, 6)
+        .slice(0, 10)
         .map((v) => ({ kind: "value" as const, text: v, hint: "value on this upstream" }));
     }
     return [];
   }, [prediction, metricNames, labelValues, activeMetric]);
+
+  const showList =
+    !dismissed &&
+    anchor !== null &&
+    suggestions.length > 0 &&
+    (prediction.mode === "word" || prediction.mode === "labelName" || prediction.mode === "labelValue");
+
+  // Keep the highlight in range whenever the suggestion set changes.
+  useEffect(() => {
+    setHighlight((current) => Math.min(current, Math.max(suggestions.length - 1, 0)));
+  }, [suggestions.length]);
+
+  // Let the parent (textarea keyup/click) re-anchor the floating list and
+  // forward textarea key events for ↑/↓/Enter/Esc navigation.
+  useEffect(() => {
+    registerTrigger?.(updateAnchor);
+    registerKeyDown?.(handleKeyDown);
+    return () => {
+      registerTrigger?.(() => undefined);
+      registerKeyDown?.(() => undefined);
+    };
+  });
+
+  /** Compute the floating overlay position from the caret (end-of-input). */
+  function updateAnchor(): void {
+    const el = inputRef?.current;
+    if (el === null || el === undefined) {
+      setAnchor(null);
+      return;
+    }
+    const rect = el.getBoundingClientRect();
+    setAnchor({ top: rect.bottom + 4, left: rect.left });
+  }
 
   function applySuggestion(text: string): void {
     if (prediction.mode === "labelName") {
@@ -155,8 +187,8 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
     } else {
       onChange(`${value.replace(/([a-zA-Z_:][a-zA-Z0-9_:]*)$/, "")}${text}`);
     }
-    inputRef.current?.focus();
     setDismissed(false);
+    inputRef?.current?.focus();
   }
 
   function applyRecipe(recipe: PromqlRecipe): void {
@@ -165,15 +197,34 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
     setDismissed(false);
   }
 
-  const showInline =
-    !dismissed && suggestions.length > 0 && (prediction.mode === "word" || prediction.mode === "labelName" || prediction.mode === "labelValue");
-
-  const inlineShown = suggestions.slice(0, MAX_INLINE_SUGGESTIONS);
+  /** Keyboard handling on the textarea — ↑/↓/Enter/Escape like an IDE. */
+  function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    if (!showList || suggestions.length === 0) {
+      return;
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlight((h) => (h + 1) % suggestions.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlight((h) => (h - 1 + suggestions.length) % suggestions.length);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const chosen = suggestions[highlight];
+      if (chosen !== undefined) {
+        applySuggestion(chosen.text);
+      }
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setDismissed(true);
+    }
+  }
 
   return (
     <div className="relative">
       <button
         type="button"
+        title="Starter queries and the metric catalog for this upstream — opens a modal"
         className="flex items-center gap-1 text-[11px] text-emerald-400 transition hover:text-emerald-300"
         onClick={() => setShowHelper(true)}
       >
@@ -181,51 +232,51 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
         PromQL helper
       </button>
 
-      {/* Predictive inline suggestions as you type — anchored to the input,
-          width/height capped and wrapping internally so they can never spill
-          outside the card/panel bounds. */}
-      {showInline ? (
+      {/* Code-editor-style floating suggestion list — a fixed overlay that
+          cannot be clipped by the form/card, positioned under the caret. */}
+      {showList && anchor !== null ? (
         <div
-          className="absolute left-0 top-full z-30 mt-1 flex max-h-16 w-full min-w-0 flex-wrap items-start gap-1 overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-950/95 p-1.5 shadow-xl"
+          className="fixed z-[60] max-h-56 w-80 max-w-[90vw] overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950/98 shadow-2xl"
+          style={{ top: anchor.top, left: anchor.left }}
           data-testid="promql-suggestions"
+          role="listbox"
         >
-          {inlineShown.map((s, i) => (
+          {suggestions.map((s, i) => (
             <button
               key={`${s.kind}-${s.text}-${i}`}
               type="button"
+              role="option"
+              aria-selected={i === highlight}
               title={s.hint}
-              onClick={() => applySuggestion(s.text)}
-              className={`max-w-full truncate rounded px-1.5 py-0.5 font-mono text-[10px] transition ${
-                s.kind === "metric"
-                  ? "bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
-                  : s.kind === "function"
-                    ? "bg-sky-500/10 text-sky-300 hover:bg-sky-500/20"
-                    : s.kind === "label"
-                      ? "bg-violet-500/10 text-violet-300 hover:bg-violet-500/20"
-                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              // mousedown (not click) so the textarea keeps focus
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applySuggestion(s.text);
+              }}
+              onMouseEnter={() => setHighlight(i)}
+              className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left font-mono text-[11px] transition ${
+                i === highlight ? "bg-emerald-500/15 text-emerald-200" : "text-zinc-300 hover:bg-zinc-900"
               }`}
             >
-              {s.text}
+              <span className="min-w-0 flex-1 truncate">{s.text}</span>
+              <span
+                className={`shrink-0 text-[9px] uppercase tracking-wide ${
+                  s.kind === "metric"
+                    ? "text-emerald-500"
+                    : s.kind === "function"
+                      ? "text-sky-400"
+                      : s.kind === "label"
+                        ? "text-violet-400"
+                        : "text-zinc-500"
+                }`}
+              >
+                {s.kind}
+              </span>
             </button>
           ))}
-          {suggestions.length > inlineShown.length ? (
-            <button
-              type="button"
-              title="Open the helper to browse all matches"
-              onClick={() => setShowHelper(true)}
-              className="rounded px-1.5 py-0.5 text-[10px] text-emerald-400 hover:text-emerald-300"
-            >
-              +{suggestions.length - inlineShown.length} more…
-            </button>
-          ) : null}
-          <button
-            type="button"
-            aria-label="Dismiss suggestions"
-            className="ml-auto rounded px-1 text-[10px] text-zinc-600 hover:text-zinc-400"
-            onClick={() => setDismissed(true)}
-          >
-            ✕
-          </button>
+          <div className="border-t border-zinc-800 px-2.5 py-1 text-[9px] text-zinc-600">
+            ↑↓ navigate · Enter accept · Esc dismiss{suggestions.length > MAX_VISIBLE ? ` · ${suggestions.length} matches` : ""}
+          </div>
         </div>
       ) : null}
 
@@ -314,7 +365,7 @@ export function PromqlHelper({ tenantId, value, onChange }: Props): JSX.Element 
                       className="max-w-full truncate rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400 hover:bg-emerald-500/10 hover:text-emerald-300"
                       onClick={() => {
                         onChange(`${value}${value.length > 0 && !/\s$/.test(value) ? " " : ""}${name}`);
-                        inputRef.current?.focus();
+                        inputRef?.current?.focus();
                       }}
                     >
                       {name}

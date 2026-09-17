@@ -622,3 +622,120 @@ export async function reorderWidgets(
     client.release();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Threshold alerts (migration 011) — evaluated by services/alertEvaluator.ts
+// ---------------------------------------------------------------------------
+
+export type AlertComparator = ">" | "<" | ">=" | "<=" | "==";
+export type AlertState = "pending" | "firing" | "resolved";
+
+export interface AlertRow {
+  id: number;
+  tenant_id: string;
+  title: string;
+  promql: string;
+  comparator: AlertComparator;
+  threshold: number;
+  for_seconds: number;
+  webhook_url: string | null;
+  enabled: boolean;
+  state: AlertState;
+  first_breach_at: string | null;
+  firing_time: string | null;
+  resolved_time: string | null;
+  last_value: number | null;
+  last_eval_at: string | null;
+  created_at: string;
+}
+
+export async function listAlerts(tenantId: string): Promise<AlertRow[]> {
+  const result = await getPool().query<AlertRow>(
+    `SELECT * FROM alerts WHERE tenant_id = $1 ORDER BY created_at`,
+    [tenantId]
+  );
+  return result.rows;
+}
+
+export interface CreateAlertInput {
+  tenantId: string;
+  title: string;
+  promql: string;
+  comparator: AlertComparator;
+  threshold: number;
+  forSeconds?: number;
+  webhookUrl?: string;
+}
+
+export async function createAlert(input: CreateAlertInput): Promise<AlertRow> {
+  const result = await getPool().query<AlertRow>(
+    `INSERT INTO alerts (tenant_id, title, promql, comparator, threshold, for_seconds, webhook_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING *`,
+    [
+      input.tenantId,
+      input.title,
+      input.promql,
+      input.comparator,
+      input.threshold,
+      input.forSeconds ?? 0,
+      input.webhookUrl ?? null,
+    ]
+  );
+  return result.rows[0] as AlertRow;
+}
+
+export async function updateAlertEnabled(
+  tenantId: string,
+  alertId: number,
+  enabled: boolean
+): Promise<boolean> {
+  const result = await getPool().query(
+    "UPDATE alerts SET enabled = $1 WHERE id = $2 AND tenant_id = $3",
+    [enabled, alertId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function deleteAlert(tenantId: string, alertId: number): Promise<boolean> {
+  const result = await getPool().query(
+    "DELETE FROM alerts WHERE id = $1 AND tenant_id = $2",
+    [alertId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Every enabled alert, across all tenants (the evaluator's scan set). */
+export async function listEnabledAlerts(): Promise<AlertRow[]> {
+  const result = await getPool().query<AlertRow>(
+    "SELECT * FROM alerts WHERE enabled = TRUE ORDER BY id"
+  );
+  return result.rows;
+}
+
+export interface AlertEvaluationPatch {
+  state: AlertState;
+  firstBreachAt: string | null;
+  firingTime: string | null;
+  resolvedTime: string | null;
+  lastValue: number | null;
+  lastEvalAt: string;
+}
+
+export async function recordAlertEvaluation(id: number, patch: AlertEvaluationPatch): Promise<void> {
+  await getPool().query(
+    `UPDATE alerts
+     SET state = $1, first_breach_at = $2, firing_time = $3,
+         resolved_time = $4, last_value = $5, last_eval_at = $6
+     WHERE id = $7`,
+    [
+      patch.state,
+      patch.firstBreachAt,
+      patch.firingTime,
+      patch.resolvedTime,
+      patch.lastValue,
+      patch.lastEvalAt,
+      id,
+    ]
+  );
+}

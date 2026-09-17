@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   encryptToken,
   decryptToken,
@@ -6,6 +6,8 @@ import {
   EncryptionError,
   deriveKey,
   resetKeyCache,
+  rewrapPayload,
+  currentKeyVersion,
   KEY_LENGTH_BYTES,
 } from "../src/db/encryption.js";
 
@@ -74,5 +76,80 @@ describe("AES-256-GCM token vault", () => {
   it("resets the cached key without error", () => {
     resetKeyCache();
     expect(() => encryptToken("roundtrip-after-reset", KEY)).not.toThrow();
+  });
+
+  describe("key-versioned rotation", () => {
+    const V1 = "c".repeat(64);
+    const V2 = "d".repeat(64);
+
+    afterEach(() => {
+      delete process.env.ENCRYPTION_KEY_VERSION;
+      delete process.env.ENCRYPTION_KEY_V1;
+      delete process.env.ENCRYPTION_KEY_V2;
+      resetKeyCache();
+    });
+
+    it("tags new payloads with the current version", () => {
+      process.env.ENCRYPTION_KEY = V2; // current key
+      process.env.ENCRYPTION_KEY_VERSION = "2";
+      const payload = encryptToken("rotate-me");
+      expect(payload.startsWith("v2!")).toBe(true);
+      expect(decryptToken(payload)).toBe("rotate-me");
+      expect(currentKeyVersion()).toBe(2);
+    });
+
+    it("still decrypts legacy untagged payloads after rotation", () => {
+      process.env.ENCRYPTION_KEY = V2;
+      process.env.ENCRYPTION_KEY_VERSION = "2";
+      process.env.ENCRYPTION_KEY_V1 = V1; // old key kept for legacy rows
+      const legacy = encryptToken("legacy-token", V1); // explicit key = untagged
+      expect(legacy.startsWith("v")).toBe(false);
+      expect(decryptToken(legacy)).toBe("legacy-token");
+    });
+
+    it("decrypts old-version tagged payloads via ENCRYPTION_KEY_V<n>", () => {
+      process.env.ENCRYPTION_KEY = V1;
+      const old = encryptToken("old-world"); // tagged v1 by default env
+      expect(old.startsWith("v1!")).toBe(true);
+      // Rotate: primary becomes V2, old key kept as ENCRYPTION_KEY_V1.
+      process.env.ENCRYPTION_KEY = V2;
+      process.env.ENCRYPTION_KEY_VERSION = "2";
+      process.env.ENCRYPTION_KEY_V1 = V1;
+      resetKeyCache();
+      expect(decryptToken(old)).toBe("old-world");
+    });
+
+    it("rewrapPayload upgrades old-version payloads to the current version", () => {
+      process.env.ENCRYPTION_KEY = V1;
+      const old = encryptToken("needs-rotation");
+      process.env.ENCRYPTION_KEY = V2;
+      process.env.ENCRYPTION_KEY_VERSION = "2";
+      process.env.ENCRYPTION_KEY_V1 = V1;
+      resetKeyCache();
+      const result = rewrapPayload(old);
+      expect(result.rotated).toBe(true);
+      expect(result.error).toBeNull();
+      expect(result.payload.startsWith("v2!")).toBe(true);
+      expect(decryptToken(result.payload)).toBe("needs-rotation");
+    });
+
+    it("rewrapPayload leaves current-version payloads untouched", () => {
+      process.env.ENCRYPTION_KEY = V1;
+      const current = encryptToken("already-current");
+      const result = rewrapPayload(current);
+      expect(result.rotated).toBe(false);
+      expect(result.payload).toBe(current);
+    });
+
+    it("rewrapPayload reports an error instead of losing an undecryptable row", () => {
+      process.env.ENCRYPTION_KEY = V2;
+      process.env.ENCRYPTION_KEY_VERSION = "2";
+      resetKeyCache();
+      const stale = "v1!aabb:ccdd:eeff"; // malformed/undecryptable v1 payload
+      const result = rewrapPayload(stale);
+      expect(result.rotated).toBe(false);
+      expect(result.error).not.toBeNull();
+      expect(result.payload).toBe(stale); // original preserved
+    });
   });
 });
