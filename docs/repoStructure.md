@@ -5,6 +5,9 @@ prometheus-passthrough/
 ├── AGENTS.md                           # Strict guidelines & coding standards for AI agents
 ├── Exec.md                             # Product spec & implementation plan
 ├── package.json                        # Root npm workspace configuration
+├── scripts/                            # Operator helper scripts (npm run …)
+│   ├── capability-review.sh           # Maps changed files → touched capabilities
+│   └── smoke-live.sh                  # End-to-end smoke vs a real Prometheus
 ├── README.md                           # Developer setup & quickstart guide
 ├── render.yaml                         # Production deployment specification
 │

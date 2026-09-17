@@ -6,6 +6,7 @@ import { MIGRATIONS } from "./migrations/index.js";
  * Standalone migration CLI — the ONLY way schema changes are applied.
  *
  *   npm run db:migrate        # apply pending migrations, then exit
+ *   npm run db:migrate:status # list applied vs pending, change nothing
  *
  * Usage model (standard release pattern, like `prisma migrate deploy`):
  *   - Run it as a deploy/release step BEFORE the new server version starts
