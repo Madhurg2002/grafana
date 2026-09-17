@@ -122,6 +122,7 @@ export function DashboardView({
             <button
               type="button"
               data-testid="share-button"
+              title="Create a share link — anyone with the link, specific emails, or your whole org"
               onClick={() => setShareDialogOpen(true)}
               className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
             >

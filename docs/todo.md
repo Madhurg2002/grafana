@@ -27,7 +27,9 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
-| Invite emails (Resend) | Plumbing exists (`services/email.ts`, `/api/share/:id/invite`) and stays off while `RESEND_API_KEY` is unset. Non-prod apps must not send mail. | When the app is declared prod-ready + domain is verified with Resend |
+| Email verification on signup | New accounts are trusted immediately today. Needs a `users.email_verified` column + a signed verification-token flow, all of which requires **sending mail first**. | With the Resend setup below — same email plumbing lands together |
+| Password reset via email | Currently the only recovery is Profile → Change password (requires knowing the current password). A forgotten password is unrecoverable without email. Needs a reset-token table (migration), `POST /api/auth/request-reset` + `POST /api/auth/reset` endpoints, and a `/reset` page. | With the Resend setup below — same email plumbing lands together |
+| Invite emails (Resend) | Plumbing exists (`services/email.ts`, `/api/share/:id/invite`) and stays off while `RESEND_API_KEY` is unset. Non-prod apps must not send mail. Verification + reset build on this. | When the app is declared prod-ready + domain is verified with Resend |
 | Production analytics / error tracking | No Sentry/analytics wired. | At public launch |
 | Live-upstream suite in CI | The gated suite (`TEST_PROMETHEUS_URL`) exists; wire it into a scheduled CI job with the demo upstream + a Postgres service. | When CI minutes are available |
 

@@ -105,6 +105,7 @@ function SignedInApp(): JSX.Element {
           <button
             type="button"
             onClick={() => navigate("/")}
+            title="Go to your dashboard"
             className="flex items-center gap-2 text-sm font-semibold tracking-tight"
           >
             <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
@@ -115,6 +116,7 @@ function SignedInApp(): JSX.Element {
               type="button"
               onClick={() => navigate("/profile")}
               data-testid="profile-link"
+              title="Your account, organizations, and everything shared with you"
               className="rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
             >
               Profile
@@ -125,6 +127,7 @@ function SignedInApp(): JSX.Element {
             <button
               type="button"
               onClick={logout}
+              title="End this session on this device (your dashboards and shares stay)"
               className="rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
             >
               Sign out
@@ -209,6 +212,7 @@ function Home(): JSX.Element {
             window.history.pushState(null, "", "/signup");
             window.dispatchEvent(new PopStateEvent("popstate"));
           }}
+          title="Free account — your dashboards, pages, and share links persist"
           className="glass-card block rounded-xl px-4 py-3 text-center text-sm font-semibold text-emerald-300 transition hover:border-emerald-500/40 hover:text-emerald-200"
         >
           Create an account
@@ -220,6 +224,7 @@ function Home(): JSX.Element {
             window.history.pushState(null, "", "/login");
             window.dispatchEvent(new PopStateEvent("popstate"));
           }}
+          title="Sign in to an existing account"
           className="block rounded-xl border border-zinc-800 px-4 py-3 text-center text-sm text-zinc-300 transition hover:border-zinc-600 hover:text-zinc-100"
         >
           Sign in
@@ -227,6 +232,7 @@ function Home(): JSX.Element {
         <button
           type="button"
           className="text-center text-xs text-zinc-500 underline-offset-2 hover:text-zinc-300 hover:underline"
+          title="Skip the account — connect straight to a Prometheus/Grafana endpoint"
           onClick={() => setConnected(true)}
         >
           or connect without an account
@@ -292,6 +298,7 @@ function NotFoundPage({ path }: { path: string }): JSX.Element {
             window.dispatchEvent(new PopStateEvent("popstate"));
             window.location.assign("/");
           }}
+          title="Open the app root"
           className="rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
         >
           Go to dashboard
@@ -299,6 +306,7 @@ function NotFoundPage({ path }: { path: string }): JSX.Element {
         <button
           type="button"
           onClick={() => window.history.back()}
+          title="Return to the previous page"
           className="rounded-lg border border-zinc-800 px-4 py-2 text-sm text-zinc-300 transition hover:border-zinc-600"
         >
           Go back

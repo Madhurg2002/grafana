@@ -684,6 +684,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               <button
                 type="button"
                 data-testid="add-panel-button"
+                title="Add a stat, gauge, sparkline, or the scrape-target table to this page"
                 className="flex items-center gap-1.5 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-emerald-500/40 hover:text-emerald-300"
                 onClick={() => {
                   resetForm();
@@ -808,6 +809,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 <PromqlHelper tenantId={tenantId} value={promql} onChange={setPromql} />
                 <button
                   type="button"
+                  title="Open the metric browser — pick a metric and its live series to build a query"
                   className="flex items-center gap-1 text-[11px] text-zinc-500 transition hover:text-emerald-300"
                   onClick={() => setBrowserOpen(true)}
                 >
