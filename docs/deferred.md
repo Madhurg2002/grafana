@@ -24,7 +24,7 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Edit-access enforcement depth | ✅ | Write endpoints (`panels`/`pages`/`widgets`/`connections`) now enforce `requireTenantAccess`: owner session, org-member session, or the tenant-scoped token minted on connect. Collaborator writes actually mutate. |
 | Route enforcement of tenant auth on query/stream | ✅ | `requireTenantAccess` guards `/api/query`, `/api/query_range`, `/api/stream` (token via header **or** `?token=` for EventSource), metric-catalog/labels/series, panels, pages, widgets, and connection management. Legacy owner-less workspaces stay reachable for the no-account flow. |
 | Live Prometheus integration tests (real upstream) | ✅ | `backend/tests/live-upstream.test.ts` — gated by `TEST_PROMETHEUS_URL` + a reachable `TEST_DATABASE_URL`; runs the real client path (undici → breaker → cache → normalizer) and skips cleanly so CI stays hermetic. |
-| `render.yaml` infra validation | ⏳ | Spec written for Render (web + static + Postgres, generated secrets); actual deploy is dashboard-configured instead. |
+| `render.yaml` infra validation | ⏳ | Free-tier spec keeps the API web service and static site on Render, removes the restricted pre-deploy command, and expects `DATABASE_URL` from an external free Postgres provider; actual deploy is dashboard-configured. |
 | Secret rotation (ENCRYPTION_KEY / JWT_SECRET) | 🔶 | v1 shipped: payloads are version-tagged (`v<N>!`), decrypt picks the key by tag (legacy untagged payloads still decrypt), `npm run rotate` rewraps rows under the current version. JWT_SECRET rotation still invalidates sessions by design. |
 
 ## Frontend
