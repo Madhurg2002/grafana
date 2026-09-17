@@ -783,6 +783,8 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 }}
               >
                 <Pencil className="h-3 w-3" aria-hidden />
+              </button>
+            )}
             <div className="flex items-center gap-1 text-[11px] text-zinc-500">
               <button
                 type="button"
@@ -793,8 +795,6 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               >
                 <RefreshCw className="h-3 w-3" aria-hidden />
               </button>
-            <label className="flex items-center gap-1 text-[11px] text-zinc-500">
-              <RefreshCw className="h-3 w-3" aria-hidden />
               <select
                 aria-label="Refresh every"
                 value={activePage.refresh_seconds ?? 15}
@@ -1010,6 +1010,14 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               <X className="h-4 w-4" aria-hidden />
             </button>
           </div>
+          {error !== null ? (
+            <p
+              className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+              role="alert"
+            >
+              {error}
+            </p>
+          ) : null}
           <div className="mt-3 flex gap-2">
             <button
               type="button"
