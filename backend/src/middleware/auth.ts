@@ -1,6 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getEnv } from "../config/env.js";
+import { canEditTenant, tenantHasOwner } from "../db/users.js";
 
 /**
  * HMAC-signed session tokens (JWT-shaped, no external dependency).
@@ -148,4 +149,53 @@ export async function requireTenant(
     return claims.sub;
   }
   return claims.tenantId;
+}
+
+/**
+ * Tenant authorization for metric-bearing routes (query/stream/panels/etc).
+ *
+ * A tenant is readable when EITHER:
+ *  - the caller presents the tenant's short-lived scoped token (issued when
+ *    the tenant was connected), or
+ *  - the caller's user session may view the tenant (owner or org member).
+ *
+ * Legacy workspaces created before accounts existed (no owner row) stay
+ * reachable so the no-account connect flow keeps working.
+ */
+export async function requireTenantAccess(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  tenantId: string
+): Promise<boolean> {
+  // EventSource (SSE) cannot send Authorization headers — allow the token
+  // via `?token=` as a fallback for the stream endpoint.
+  const queryToken =
+    typeof (request.query as { token?: unknown } | null)?.token === "string"
+      ? ((request.query as { token: string }).token as string)
+      : "";
+  const claims =
+    resolveSession(request) ?? (queryToken.length > 0 ? verifyToken(queryToken) : null);
+  if (claims === null) {
+    await reply.code(401).send({ error: "Authentication required" });
+    return false;
+  }
+  if (claims.type === "user") {
+    (request as AuthedRequest).userId = claims.sub;
+    (request as AuthedRequest).email = claims.email;
+    if (await canEditTenant(tenantId, claims.sub)) {
+      return true;
+    }
+    // Not visible via org/ownership — fall through to legacy check below.
+    if (await tenantHasOwner(tenantId)) {
+      await reply.code(403).send({ error: "You do not have access to this workspace" });
+      return false;
+    }
+    return true; // legacy owner-less workspace stays open
+  }
+  // Tenant-scoped token.
+  if (claims.tenantId !== tenantId) {
+    await reply.code(403).send({ error: "Token does not grant access to this workspace" });
+    return false;
+  }
+  return true;
 }

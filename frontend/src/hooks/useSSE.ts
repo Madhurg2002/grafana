@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiBase } from "../lib/api";
+import { apiBase, getToken } from "../lib/api";
 import type { HostHealth } from "./types";
 
 export type StreamStatus = "connecting" | "live" | "disconnected";
@@ -7,6 +7,9 @@ export type StreamStatus = "connecting" | "live" | "disconnected";
 /**
  * Consumes GET /api/stream?tenantId=... Server-Sent Events and exposes the
  * latest HostHealth payload plus connection status for HealthBadge.
+ *
+ * EventSource cannot send Authorization headers, so the user session token
+ * rides the `?token=` query parameter (the backend accepts header or query).
  */
 export function useSSE(tenantId: string | null): {
   status: StreamStatus;
@@ -23,8 +26,10 @@ export function useSSE(tenantId: string | null): {
     }
 
     setStatus("connecting");
+    const token = getToken();
+    const auth = token !== null ? `&token=${encodeURIComponent(token)}` : "";
     const source = new EventSource(
-      `${apiBase()}/api/stream?tenantId=${encodeURIComponent(tenantId)}`
+      `${apiBase()}/api/stream?tenantId=${encodeURIComponent(tenantId)}${auth}`
     );
     sourceRef.current = source;
 

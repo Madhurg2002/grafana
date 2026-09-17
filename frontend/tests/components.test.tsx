@@ -129,7 +129,13 @@ describe("ConnectForm", () => {
       "fetch",
       vi.fn(async () =>
         new Response(
-          JSON.stringify({ ok: true, tenantId: "team-1", status: "connected", latencyMs: 9 }),
+          JSON.stringify({
+            ok: true,
+            tenantId: "team-1",
+            status: "connected",
+            latencyMs: 9,
+            tenantToken: "tenant-token-abc",
+          }),
           { status: 200 }
         )
       )
@@ -141,7 +147,7 @@ describe("ConnectForm", () => {
     await user.click(screen.getByRole("button", { name: /connect/i }));
 
     await waitFor(() => {
-      expect(onConnected).toHaveBeenCalledWith("team-1");
+      expect(onConnected).toHaveBeenCalledWith("team-1", "tenant-token-abc");
     });
   });
 
@@ -184,6 +190,24 @@ describe("DashboardView", () => {
     expect(screen.getByTestId("health-badge")).toBeInTheDocument();
   });
 
+  it("renders a manual refresh control for signed-in sessions", async () => {
+    localStorage.setItem("passthrough.token", "t");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({ resultType: "vector", result: [], cached: false, query: "up" }),
+          { status: 200 }
+        )
+      )
+    );
+    renderDashboard("team-9");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /refresh now/i })).toBeInTheDocument();
+    });
+    localStorage.removeItem("passthrough.token");
+  });
+
   it("subscribes to the SSE stream for the tenant", async () => {
     renderDashboard("team-9");
     await waitFor(() => {
@@ -216,6 +240,9 @@ describe("DashboardView", () => {
         const url = String(input);
         if (url.includes("/api/share")) {
           return new Response(JSON.stringify(shareResponse), { status: 201 });
+        }
+        if (url.includes("/api/orgs")) {
+          return new Response(JSON.stringify({ orgs: [] }), { status: 200 });
         }
         return new Response(
           JSON.stringify({ resultType: "vector", result: [], cached: false, query: "up" }),

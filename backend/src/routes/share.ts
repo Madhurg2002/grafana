@@ -8,18 +8,23 @@ import {
   recordInvitedEmails,
   revokeShareLink,
   tenantOwnedBy,
+  getTenantOrg,
+  isOrgMember,
   type ShareAccess,
 } from "../db/users.js";
 import { instantQuery, rangeQuery } from "../services/prometheus.js";
 import { DEFAULT_PUBLIC_QUERIES } from "../services/publicQueries.js";
 import { sendShareInvite } from "../services/email.js";
 import { signViewToken, verifyViewToken } from "../services/shareTokens.js";
+import { resolveSession } from "../middleware/auth.js";
 
 const accessSchema = z.enum([
   "anyone_view",
   "anyone_edit",
   "email_view",
   "email_edit",
+  "org_view",
+  "org_edit",
 ]);
 
 const createSchema = z.object({
@@ -28,6 +33,8 @@ const createSchema = z.object({
   access: accessSchema.optional(),
   allowedEmails: z.array(z.string().email().max(254)).max(50).optional(),
   invite: z.boolean().optional(),
+  /** Which page of the tenant to snapshot (defaults to the home page). */
+  pageId: z.number().int().positive().optional(),
 });
 
 const inviteSchema = z.object({
@@ -120,6 +127,15 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       return reply
         .code(400)
         .send({ error: "Email-restricted shares need at least one allowed email" });
+    }
+    if ((access ?? "anyone_view").startsWith("org")) {
+      const orgId = await getTenantOrg(tenantId);
+      if (orgId === null) {
+        return reply.code(400).send({
+          error:
+            "This workspace isn't attached to an org yet — attach it first (Profile → Organizations)",
+        });
+      }
     }
     const link = await createShareLink({
       tenantId,
@@ -261,6 +277,20 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
         });
       }
     }
+    if (link.access.startsWith("org")) {
+      const claims = resolveSession(request);
+      const orgId = await getTenantOrg(link.tenant_id);
+      const member =
+        claims !== null &&
+        claims.type === "user" &&
+        orgId !== null &&
+        (await isOrgMember(orgId, claims.sub));
+      if (!member) {
+        return reply.code(403).send({
+          error: "This share is restricted to members of its organization — sign in with a member account",
+        });
+      }
+    }
 
     const metrics: ShareViewPayload["metrics"] = {
       hosts: [],
@@ -311,6 +341,8 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       // Upstream degraded — return whatever we have; client shows stale state.
     }
 
+    const claims = resolveSession(request);
+    const isOwner = claims !== null && claims.type === "user" && (await tenantOwnedBy(link.tenant_id, claims.sub));
     const payload: ShareViewPayload = {
       tenantId: link.tenant_id,
       label: link.label,
@@ -318,7 +350,7 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       metrics,
       generatedAt: new Date().toISOString(),
       access: link.access,
-      canEdit: link.access.endsWith("edit"),
+      canEdit: link.access.endsWith("edit") || isOwner,
     };
     return reply.code(200).send(payload);
   }

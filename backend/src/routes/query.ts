@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { requireTenantAccess } from "../middleware/auth.js";
 import { CircuitOpenError } from "../services/circuitBreaker.js";
 import {
   instantQuery,
@@ -129,6 +130,9 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     const { tenantId, query, time } = parsed.data;
+    if (!(await requireTenantAccess(request, reply, tenantId))) {
+      return reply; // 401/403 already sent
+    }
 
     try {
       const { result, cached } = await instantQuery({ tenantId, query, time });
@@ -173,6 +177,9 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
       });
     }
     const { tenantId, query, start, end, step } = parsed.data;
+    if (!(await requireTenantAccess(request, reply, tenantId))) {
+      return reply; // 401/403 already sent
+    }
 
     try {
       const { result, cached } = await rangeQuery({
@@ -207,6 +214,9 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
       if (!tenantId.success) {
         return reply.code(400).send({ error: "Invalid tenantId" });
       }
+      if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+        return reply; // 401/403 already sent
+      }
       try {
         const { names, cached } = await fetchMetricNames(tenantId.data);
         return reply.code(200).send({ names, cached });
@@ -228,6 +238,9 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
         .safeParse(request.params.label);
       if (!tenantId.success || !label.success) {
         return reply.code(400).send({ error: "Invalid tenantId or label" });
+      }
+      if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+        return reply; // 401/403 already sent
       }
       try {
         const result = await fetchLabelValues(tenantId.data, label.data);
@@ -255,6 +268,9 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
       const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
       if (!tenantId.success) {
         return reply.code(400).send({ error: "Invalid tenantId" });
+      }
+      if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+        return reply; // 401/403 already sent
       }
       try {
         const { names } = await fetchMetricNames(tenantId.data);
@@ -303,6 +319,9 @@ export async function queryRoutes(app: FastifyInstance): Promise<void> {
         .safeParse(request.params.metric);
       if (!tenantId.success || !metric.success) {
         return reply.code(400).send({ error: "Invalid tenantId or metric" });
+      }
+      if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+        return reply; // 401/403 already sent
       }
       try {
         const result = await fetchMetricSeries(tenantId.data, metric.data);

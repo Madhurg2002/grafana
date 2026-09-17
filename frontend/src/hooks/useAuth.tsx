@@ -21,6 +21,9 @@ interface AuthContextValue {
   ready: boolean;
   applyAuth: (token: string, user: AuthUser) => void;
   logout: () => void;
+  /** Scoped token for the connected workspace (read access to its metrics). */
+  tenantToken: string | null;
+  setTenantToken: (token: string | null) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -29,10 +32,21 @@ interface MeResponse {
   user: AuthUser;
 }
 
+const TENANT_TOKEN_KEY = "passthrough.tenantToken";
+
+function loadTenantToken(): string | null {
+  try {
+    return localStorage.getItem(TENANT_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }): JSX.Element {
   const [token, setTokenState] = useState<string | null>(() => getToken());
   const [user, setUser] = useState<AuthUser | null>(null);
   const [ready, setReady] = useState<boolean>(token === null);
+  const [tenantToken, setTenantTokenState] = useState<string | null>(loadTenantToken);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,6 +89,19 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     setUser(nextUser);
   }, []);
 
+  const setTenantToken = useCallback((next: string | null) => {
+    setTenantTokenState(next);
+    try {
+      if (next === null) {
+        localStorage.removeItem(TENANT_TOKEN_KEY);
+      } else {
+        localStorage.setItem(TENANT_TOKEN_KEY, next);
+      }
+    } catch {
+      // Storage unavailable — token lives for the session only.
+    }
+  }, []);
+
   const logout = useCallback(() => {
     setToken(null);
     setTokenState(null);
@@ -82,8 +109,8 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ token, user, ready, applyAuth, logout }),
-    [token, user, ready, applyAuth, logout]
+    () => ({ token, user, ready, applyAuth, logout, tenantToken, setTenantToken }),
+    [token, user, ready, applyAuth, logout, tenantToken, setTenantToken]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
