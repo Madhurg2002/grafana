@@ -3,15 +3,16 @@ import { initializeDatabase } from "./migrations/runner.js";
 import { MIGRATIONS } from "./migrations/index.js";
 
 /**
- * Standalone migration CLI — the ONLY way schema changes are applied.
+ * Standalone migration CLI for controlled schema updates.
  *
  *   npm run db:migrate        # apply pending migrations, then exit
  *   npm run db:migrate:status # list applied vs pending, change nothing
  *
  * Usage model (standard release pattern, like `prisma migrate deploy`):
- *   - Run it as a deploy/release step BEFORE the new server version starts
- *     (Render: Settings → Pre-Deploy Command = `npm run db:migrate`).
- *   - The server itself never migrates; it only reads/writes tables.
+ *   - Run it before deployment when the hosting platform supports a release
+ *     step, or from another migration-capable environment.
+ *   - The server also applies pending migrations during boot as a bounded
+ *     safety net for platforms without a release step.
  *   - Safe to run repeatedly and concurrently with a running server
  *     (advisory lock + checksum-verified idempotent migrations).
  */

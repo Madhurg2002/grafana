@@ -113,28 +113,32 @@ export function ShareView({ id }: { id: string }): JSX.Element {
     let cancelled = false;
     async function load(): Promise<void> {
       try {
-        // Email-restricted links: exchange the signed-in session for a
-        // short-lived view token, re-minting when it expires (1h TTL) so a
-        // long-lived tab never degrades into a false "restricted" screen.
         let token = accessToken;
-        if (token !== null) {
-          const payload = await fetchShareView(id, token);
+        // Public links should not make a protected token request. Try the
+        // public snapshot first and only exchange a signed-in session when
+        // the link explicitly reports that access is restricted.
+        try {
+          const payload = await fetchShareView(id, token ?? undefined);
           if (!cancelled) {
             setData(payload);
             setRestricted(false);
           }
           return;
-        }
-        try {
-          const access = await fetchShareAccessToken(id);
-          if (!cancelled) {
-            setAccessToken(access.token);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "";
+          if (!/restricted|allow-list|403/i.test(message)) {
+            throw err;
           }
-          token = access.token;
-        } catch {
-          // Signed out or not allow-listed — the view fetch decides below.
         }
-        const payload = await fetchShareView(id, token ?? undefined);
+
+        // Email-restricted links: exchange the signed-in session for a
+        // short-lived view token, re-minting when it expires (1h TTL).
+        const access = await fetchShareAccessToken(id);
+        if (!cancelled) {
+          setAccessToken(access.token);
+        }
+        token = access.token;
+        const payload = await fetchShareView(id, token);
         if (!cancelled) {
           setData(payload);
           setRestricted(false);

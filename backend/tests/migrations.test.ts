@@ -25,6 +25,18 @@ describe("migration definitions", () => {
     expect(second?.sql).toContain("set_updated_at()");
     expect(second?.sql).toContain("CREATE TRIGGER trg_prometheus_connections_updated_at");
   });
+
+  it("provides the unique target required by connection upserts", () => {
+    const connectionLabelIndex = MIGRATIONS.find(
+      (m) => m.name === "014_connections_tenant_label_unique"
+    );
+    expect(connectionLabelIndex?.sql).toContain(
+      "CREATE UNIQUE INDEX IF NOT EXISTS uq_prometheus_connections_tenant_label"
+    );
+    expect(connectionLabelIndex?.sql).toContain(
+      "ON prometheus_connections (tenant_id, label)"
+    );
+  });
 });
 
 describe("checksum", () => {

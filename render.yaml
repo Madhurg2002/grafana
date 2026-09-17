@@ -2,13 +2,10 @@ services:
   - type: web
     name: prometheus-passthrough-api
     runtime: node
-    plan: starter
+    plan: free
     region: oregon
     rootDir: backend
     buildCommand: npm ci && npm run build
-    # Apply pending migrations (008 orgs, 009 page_widgets, …) BEFORE the new
-    # server version starts. Idempotent: advisory-locked + checksum-verified.
-    preDeployCommand: npm run db:migrate
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
@@ -17,20 +14,13 @@ services:
       - key: PORT
         value: 10000
       - key: DATABASE_URL
-        fromDatabase:
-          name: prometheus-passthrough-db
-          property: connectionString
+        sync: false
       - key: ENCRYPTION_KEY
         generateValue: true
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGIN
-        value: https://prometheus-passthrough.onrender.com
-
-databases:
-  - name: prometheus-passthrough-db
-    databaseName: prometheus_passthrough
-    plan: basic-256mb
+        value: https://grafana-helper.vercel.app,https://prometheus-passthrough.onrender.com
 
   - type: web
     name: prometheus-passthrough-ui

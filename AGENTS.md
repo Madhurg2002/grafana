@@ -8,6 +8,12 @@
 3. **No External Grafana Dependency:** Route all metric requests directly to Prometheus endpoints (`/api/v1/query` and `/api/v1/query_range`). A pasted Grafana URL is *resolved to its Prometheus datasource* (see `backend/src/services/upstream.ts`) — never proxy Grafana dashboards/panels.
 4. **Never Bypass Security:** All Prometheus/Grafana credentials/tokens passed to the backend must be encrypted via `src/db/encryption.ts` using AES-256-GCM before database persistence.
 
+## Git Workflow
+* At the start of every task, check whether `main` has commits that are not present in the current branch and review them before making changes.
+* Keep work on the current branch and merge completed changes into that branch by default.
+* Do not create or switch to a new branch unless the user explicitly requests it or the task requires isolated parallel work.
+* When a branch is explicitly needed, name it after the task being performed and merge it back before finishing when the user has asked for an end-to-end change.
+
 ## Project Docs (keep these in sync)
 | File | Purpose | Update rule |
 | :--- | :--- | :--- |
@@ -53,5 +59,5 @@ When generating or modifying PromQL queries in `backend/src/services/prometheus.
 
 ## Migrations Policy
 * `backend/src/db/migrations/` files are standalone; the app runtime NEVER runs them implicitly.
-* Apply schema changes explicitly: `npm run db:migrate` (release step / Render pre-deploy command). Boot (`bootstrapDatabase`) only verifies + retries — keep it, but treat it as a safety net, not the mechanism.
+* Prefer applying schema changes explicitly with `npm run db:migrate` from a migration-capable environment before deployment. The backend currently also applies pending migrations during boot via `bootstrapDatabase`; keep that as a bounded startup safety net, but do not depend on a Render pre-deploy command when using the free tier.
 * One migration per schema change, named `0NN-description.ts`, registered in `migrations/index.ts`. Immutable once applied.

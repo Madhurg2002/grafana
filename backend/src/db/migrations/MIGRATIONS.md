@@ -56,11 +56,11 @@ later number. Never edit `003-*.ts`–`011-*.ts` in place.
 
 ## How Migrations Run in Production
 
-* The app **never** migrates on boot as the mechanism — `render.yaml` sets
-  `preDeployCommand: npm run db:migrate`, so pending migrations apply right
-  before the new revision serves traffic.
-* `bootstrapDatabase` at boot only *verifies* the schema and retries — a
-  safety net, not the mechanism.
+* On platforms with a release step, run `npm run db:migrate` before the new
+  revision serves traffic. The free-tier Render configuration has no
+  pre-deploy command.
+* `bootstrapDatabase` applies pending migrations at boot with bounded retries,
+  which is the fallback for platforms without a release step.
 * After a deploy, confirm with `npm run db:migrate:status`.
 
 ## Query Observability (dev aid)
