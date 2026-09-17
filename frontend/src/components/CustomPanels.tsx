@@ -34,7 +34,7 @@ import {
   type PageWidget,
   type WidgetKind,
 } from "../lib/api";
-import { useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
+import { DEFAULT_QUERIES, useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
 
 const PALETTE = ["#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#a78bfa", "#38bdf8"];
 
@@ -65,6 +65,33 @@ const REFRESH_OPTIONS = [
   { seconds: 60, label: "1m" },
   { seconds: 300, label: "5m" },
 ];
+
+const WIDGET_DEFAULTS: Record<WidgetKind, { title: string; promql: string; unit: string; span: number }> = {
+  sparkline: {
+    title: "Network RX",
+    promql: DEFAULT_QUERIES.networkRx,
+    unit: "bytes/s",
+    span: 2,
+  },
+  gauge: {
+    title: "CPU Utilization",
+    promql: DEFAULT_QUERIES.cpu,
+    unit: "%",
+    span: 1,
+  },
+  stat: {
+    title: "Hosts Up",
+    promql: DEFAULT_QUERIES.hostsUp,
+    unit: "",
+    span: 1,
+  },
+  hosts_table: {
+    title: "Scrape Targets",
+    promql: "",
+    unit: "",
+    span: 3,
+  },
+};
 
 /**
  * Maps a widget's grid span to responsive classes. In wide mode the grid is
@@ -458,12 +485,17 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
   }
 
   function resetForm(): void {
-    setTitle("");
-    setPromql("");
-    setUnit("");
-    setKind("sparkline");
-    setSpan(1);
+    applyWidgetDefaults("sparkline");
     setEditingWidget(null);
+  }
+
+  function applyWidgetDefaults(nextKind: WidgetKind): void {
+    const defaults = WIDGET_DEFAULTS[nextKind];
+    setKind(nextKind);
+    setTitle(defaults.title);
+    setPromql(defaults.promql);
+    setUnit(defaults.unit);
+    setSpan(defaults.span);
   }
 
   async function handleCreate(): Promise<void> {
@@ -493,15 +525,20 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
     setBusy(true);
     setError(null);
     try {
-      await updateWidget(tenantId, editingWidget.id, {
+      const { widget } = await updateWidget(tenantId, editingWidget.id, {
         title: title.trim(),
         ...(editingWidget.kind !== "hosts_table" ? { promql: promql.trim() } : {}),
         unit: unit.trim().length > 0 ? unit.trim() : null,
         span,
       });
+      setWidgets((current) =>
+        current.map((currentWidget) =>
+          currentWidget.id === widget.id ? widget : currentWidget
+        )
+      );
       resetForm();
       setAdding(false);
-      await refresh();
+      window.dispatchEvent(new CustomEvent("passthrough:refresh"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update widget");
     } finally {
@@ -876,7 +913,14 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
             <div className="flex flex-col gap-0.5">
               <select
                 value={kind}
-                onChange={(e) => setKind(e.target.value as WidgetKind)}
+                onChange={(e) => {
+                  const nextKind = e.target.value as WidgetKind;
+                  if (editingWidget === null) {
+                    applyWidgetDefaults(nextKind);
+                  } else {
+                    setKind(nextKind);
+                  }
+                }}
                 className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
                 aria-label="Widget type"
                 title="How the data is drawn: over time, as a dial, a single number, or the target table"

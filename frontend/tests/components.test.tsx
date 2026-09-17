@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { HealthBadge } from "../src/components/HealthBadge";
 import { StatusCard } from "../src/components/StatusCard";
 import { GaugeCard } from "../src/components/GaugeCard";
-import { SparkLineCard } from "../src/components/SparkLineCard";
+import { formatChartTime, SparkLineCard } from "../src/components/SparkLineCard";
 import { ConnectForm } from "../src/components/ConnectForm";
 import { DashboardView } from "../src/components/DashboardView";
 import { AuthProvider } from "../src/hooks/useAuth";
@@ -118,6 +118,10 @@ describe("SparkLineCard", () => {
   it("renders empty state without crashing", () => {
     render(<SparkLineCard title="Network RX" unit="bytes/s" series={[]} stroke="#34d399" />);
     expect(screen.getByTestId("sparkline-card")).toBeInTheDocument();
+  });
+
+  it("formats each point timestamp independently", () => {
+    expect(formatChartTime(1758000000000)).not.toBe(formatChartTime(1758000060000));
   });
 });
 
