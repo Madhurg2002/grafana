@@ -130,6 +130,7 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
     });
 
     let invited: string[] = [];
+    let skipped: string[] = [];
     if (invite === true && (allowedEmails ?? []).length > 0) {
       const origin = request.headers.origin ?? "";
       const emailResult = await sendShareInvite({
@@ -142,6 +143,9 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
         await recordInvitedEmails(link.id, emailResult.sent);
         invited = emailResult.sent;
       }
+      // Email not configured (or all sends failed) — tell the client so the
+      // dialog can fall back to copy-the-link instead of a silent no-op.
+      skipped = emailResult.skipped.length > 0 ? emailResult.skipped : emailResult.failed;
     }
 
     return reply.code(201).send({
@@ -152,6 +156,7 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       access: link.access,
       allowedEmails: link.allowed_emails,
       invited,
+      skipped,
     });
   });
 
