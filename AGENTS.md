@@ -26,3 +26,37 @@ When generating or modifying PromQL queries in `backend/src/services/prometheus.
 * Wrap external HTTP calls (to Prometheus) in try/catch blocks with circuit breaker handling (`src/services/circuitBreaker.ts`).
 * Use process in-memory caching (`lru-cache`) with a 300-second TTL for query responses.
 * Write full Vitest test coverage for backend services/routes and frontend components. Ensure `npm test` passes cleanly.
+
+## Capability Map (what exists — check here BEFORE building something new)
+Referenced from `docs/deferred.md` (status) and `docs/skills.md` (deep dive). Route-level truth lives in the code: `backend/src/routes/*.ts`, `frontend/src/lib/api.ts`.
+
+| Capability | Where |
+| :--- | :--- |
+| Accounts: signup/login/me (scrypt + HMAC sessions) | `backend/src/routes/auth.ts`, `frontend/src/hooks/useAuth.tsx` |
+| Connect flow: URI + optional token → detect (Prometheus **or** Grafana) → encrypt → persist | `backend/src/routes/connect.ts`, `backend/src/services/upstream.ts`, `frontend/src/components/ConnectForm.tsx` |
+| Multiple stored URIs per user + one-click switch (no re-auth) | `ConnectionSwitcher.tsx`, `/api/connections/:tenantId*` |
+| PromQL proxy: instant/range, normalizer, 300s LRU cache, circuit breaker | `backend/src/services/prometheus.ts`, `cache.ts`, `circuitBreaker.ts` |
+| Live updates: single-poll SSE fan-out (1 query / 5s / tenant) | `backend/src/services/sse.ts`, `/api/stream` |
+| Built-in dashboard: hosts up, CPU/RAM gauges, network sparklines, scrape-target table | `frontend/src/components/DashboardView.tsx` |
+| Custom views: PromQL panels (sparkline/gauge/stat), drag-reorder, persisted | `CustomPanels.tsx`, `/api/panels/:tenantId*` |
+| Dashboard PAGES: Home + user-created pages grouping panels | migration 007, `/api/pages/:tenantId*`, page tabs in `CustomPanels` |
+| PromQL helper: recipes filtered by upstream, metric catalog, label values, series browser, predictive autocomplete | `PromqlHelper.tsx`, `MetricBrowser.tsx`, `/api/metrics|labels|promql/*` |
+| Formula transparency: every card/table exposes the query behind it (hover tooltip / `query:` line) | `SparkLineCard`, `GaugeCard`, `DashboardView` hosts table |
+| Share links: audience (anyone-link / email allow-list) × right (view/edit), revoke, public snapshot view | `backend/src/routes/share.ts`, `ShareDialog.tsx`, `ShareView.tsx` |
+| Profile: links I created (revoke), links shared with me, revoked status | `frontend/src/components/ProfileView.tsx`, `/api/profile/shares` |
+| Per-user grid density (auto/1/2/3), per-screen responsive | `CustomPanels.tsx` density control (localStorage) |
+| Invite emails via Resend | `backend/src/services/email.ts` — OPTIONAL, disabled until `RESEND_API_KEY` is set (deferred; see ledger) |
+
+## Decision Tree (how to choose where things go)
+1. **New metric display?** → Built-in card (`DashboardView`) only for node-exporter essentials; anything user-specific = custom panel. Never hardcode tenant-specific queries into the built-ins.
+2. **New persisted per-user data?** → new column/table via a **new migration file** (`backend/src/db/migrations/0NN-*.ts`) + registered in `migrations/index.ts` + schema helpers in `db/schema.ts` or `db/users.ts`. Never edit an applied migration (checksum guard).
+3. **New upstream interaction?** → goes through `services/prometheus.ts` (breaker + cache + normalizer). Never `fetch()` Prometheus from a route directly.
+4. **New user-facing surface?** → route in `frontend/src/App.tsx` parseRoute + component; auth-gated surfaces live under `SignedInApp`. Keep ONE header (`SignedInApp`'s); embedded views render toolbars, not headers.
+5. **Internal identifiers (tenant IDs, user IDs)?** → NEVER render them in the UI. Users see labels/emails only.
+6. **New API error?** → always `{ error, details? }` with zod issue paths; the client (`authedJson`) surfaces `details` so failures are diagnosable.
+7. **Anything you cannot finish now?** → `docs/deferred.md` row in the SAME commit.
+
+## Migrations Policy
+* `backend/src/db/migrations/` files are standalone; the app runtime NEVER runs them implicitly.
+* Apply schema changes explicitly: `npm run db:migrate` (release step / Render pre-deploy command). Boot (`bootstrapDatabase`) only verifies + retries — keep it, but treat it as a safety net, not the mechanism.
+* One migration per schema change, named `0NN-description.ts`, registered in `migrations/index.ts`. Immutable once applied.

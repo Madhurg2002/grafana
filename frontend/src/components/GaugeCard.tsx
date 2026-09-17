@@ -12,6 +12,8 @@ export interface GaugeCardProps {
   title: string;
   percent: number;
   level: StatusLevel;
+  /** The PromQL behind this gauge — surfaced as a hover formula tooltip. */
+  query?: string;
 }
 
 function levelFor(percent: number): StatusLevel {
@@ -20,7 +22,7 @@ function levelFor(percent: number): StatusLevel {
   return "emerald";
 }
 
-export function GaugeCard({ title, percent, level }: GaugeCardProps): JSX.Element {
+export function GaugeCard({ title, percent, level, query }: GaugeCardProps): JSX.Element {
   const resolved = level ?? levelFor(percent);
   const clamped = Math.max(0, Math.min(100, percent));
   const data = [{ name: title, value: clamped, fill: LEVEL_COLORS[resolved] }];
@@ -34,7 +36,12 @@ export function GaugeCard({ title, percent, level }: GaugeCardProps): JSX.Elemen
       className={`glass-card p-5 ${chrome.border} ${chrome.shadow}`}
       data-testid="gauge-card"
     >
-      <span className="text-xs uppercase tracking-wider text-zinc-400">{title}</span>
+      <span
+        className="block truncate text-xs uppercase tracking-wider text-zinc-400"
+        title={query !== undefined ? `${title} — ${query}` : title}
+      >
+        {title}
+      </span>
       <div className="relative mt-2 h-36">
         <ResponsiveContainer width="100%" height="100%">
           <RadialBarChart

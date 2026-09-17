@@ -36,6 +36,8 @@ export function DashboardView({
   /** When true, the parent chrome already brands the page — render a slim toolbar instead of a full header. */
   embedded?: boolean;
 }): JSX.Element {
+  // Internal tenant IDs never render in the UI (callers pass embedded mode).
+  void tenantId.length;
   const { status } = useSSE(tenantId);
   const { token } = useAuth();
   const [activeLabel, setActiveLabel] = useState<string>("default");
@@ -60,25 +62,20 @@ export function DashboardView({
   }
 
   return (
-    <div className="min-h-screen">
-      <header
-        className={`sticky z-10 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md ${
-          embedded ? "top-12" : "top-0"
-        }`}
-      >
+    <div className={embedded ? "" : "min-h-screen"}>
+      {/* In embedded mode the app header above is THE header — this renders a
+          slim toolbar only. Internal tenant IDs are never displayed. */}
+      {embedded ? null : (
+      <header className="sticky top-0 z-10 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 sm:px-6">
           <div className="flex items-center gap-2">
-            {embedded ? null : (
-              <>
-                <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
-                <span className="text-sm font-semibold tracking-tight">Passthrough</span>
-              </>
-            )}
+            <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
+            <span className="text-sm font-semibold tracking-tight">Passthrough</span>
             <span
               className="hidden max-w-72 truncate text-xs text-zinc-500 sm:inline"
-              title={`tenant: ${tenantId} · connection: ${activeLabel}`}
+              title={`connection: ${activeLabel}`}
             >
-              tenant: {tenantId} · {activeLabel}
+              {activeLabel}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -92,8 +89,27 @@ export function DashboardView({
           </div>
         </div>
       </header>
+      )}
 
-      {token !== null ? (
+      {/* In embedded mode the switcher/health/share controls live in a slim
+          toolbar row directly under the single app header. */}
+      {embedded && token !== null ? (
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 pt-3 sm:px-6">
+          <ConnectionSwitcher tenantId={tenantId} onActiveChanged={setActiveLabel} />
+          <div className="flex items-center gap-2">
+            <HealthBadge status={status} />
+            <button
+              type="button"
+              data-testid="share-button"
+              onClick={() => setShareDialogOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
+            >
+              <Share2 className="h-3.5 w-3.5" aria-hidden />
+              Share
+            </button>
+          </div>
+        </div>
+      ) : !embedded && token !== null ? (
         <div className="mx-auto mt-4 flex max-w-6xl items-center justify-end px-4 sm:px-6">
           <button
             type="button"
@@ -120,8 +136,18 @@ export function DashboardView({
             icon={Server}
             subtitle="Live via single-poll SSE"
           />
-          <GaugeCard title="CPU Utilization" percent={cpuPercent} level={levelFor(cpuPercent)} />
-          <GaugeCard title="RAM Utilization" percent={ramPercent} level={levelFor(ramPercent)} />
+          <GaugeCard
+            title="CPU Utilization"
+            percent={cpuPercent}
+            level={levelFor(cpuPercent)}
+            query={DEFAULT_QUERIES.cpu}
+          />
+          <GaugeCard
+            title="RAM Utilization"
+            percent={ramPercent}
+            level={levelFor(ramPercent)}
+            query={DEFAULT_QUERIES.ram}
+          />
         </section>
 
         <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -130,12 +156,14 @@ export function DashboardView({
             unit="bytes/s"
             series={netRx.series}
             stroke="#34d399"
+            query={DEFAULT_QUERIES.networkRx}
           />
           <SparkLineCard
             title="Network TX"
             unit="bytes/s"
             series={netTx.series}
             stroke="#60a5fa"
+            query={DEFAULT_QUERIES.networkTx}
           />
         </section>
 
@@ -148,6 +176,13 @@ export function DashboardView({
                 to the last scrape
               </span>
             </h2>
+            {/* Formula transparency: the exact query behind this table. */}
+            <p
+              className="mb-2 truncate font-mono text-[10px] text-zinc-600"
+              title={`Query powering this table: ${DEFAULT_QUERIES.hostsUp}`}
+            >
+              <span className="text-zinc-500">query:</span> {DEFAULT_QUERIES.hostsUp}
+            </p>
             <div className="overflow-hidden rounded-xl border border-zinc-800/80">
               <table className="w-full text-left text-xs">
               <thead className="bg-zinc-900/70 text-zinc-400">

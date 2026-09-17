@@ -161,3 +161,32 @@ export async function revokeShareLink(id: string, userId: string): Promise<boole
   );
   return (result.rowCount ?? 0) > 0;
 }
+
+/**
+ * Profile data — everything the signed-in user can see about sharing:
+ *  - created:  links they made (including revoked, so revocation is visible)
+ *  - sharedWithMe: links restricting access to this user's email
+ *  - revokedSharedWithMe: restricted links that were since revoked
+ */
+export async function listSharesCreatedBy(userId: string): Promise<ShareLinkRow[]> {
+  const result = await getPool().query<ShareLinkRow>(
+    `SELECT id, tenant_id, created_by, label, created_at, revoked,
+            access, allowed_emails, invited_emails
+     FROM share_links WHERE created_by = $1
+     ORDER BY created_at DESC LIMIT 200`,
+    [userId]
+  );
+  return result.rows;
+}
+
+export async function listSharesForEmail(email: string): Promise<ShareLinkRow[]> {
+  const result = await getPool().query<ShareLinkRow>(
+    `SELECT id, tenant_id, created_by, label, created_at, revoked,
+            access, allowed_emails, invited_emails
+     FROM share_links
+     WHERE $1 = ANY(allowed_emails)
+     ORDER BY created_at DESC LIMIT 200`,
+    [email.toLowerCase()]
+  );
+  return result.rows;
+}

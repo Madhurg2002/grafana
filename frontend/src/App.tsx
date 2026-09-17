@@ -5,6 +5,7 @@ import { AuthForm } from "./components/AuthForm";
 import { ConnectForm } from "./components/ConnectForm";
 import { DashboardView } from "./components/DashboardView";
 import { ShareView } from "./components/ShareView";
+import { ProfileView } from "./components/ProfileView";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { fetchConnectionInfo, type ConnectionInfo } from "./lib/api";
 
@@ -12,6 +13,7 @@ type Route =
   | { name: "home" }
   | { name: "auth"; mode: "login" | "signup" }
   | { name: "share"; id: string }
+  | { name: "profile" }
   | { name: "not-found"; path: string };
 
 function parseRoute(): Route {
@@ -27,6 +29,9 @@ function parseRoute(): Route {
   if (path === "/signup") {
     return { name: "auth", mode: "signup" };
   }
+  if (path === "/profile") {
+    return { name: "profile" };
+  }
   if (path === "/" || path === "/index.html") {
     return { name: "home" };
   }
@@ -37,6 +42,18 @@ function SignedInApp(): JSX.Element {
   const { user, logout } = useAuth();
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
   const [connectionChecked, setConnectionChecked] = useState(false);
+  const [route, setRoute] = useState<Route>(parseRoute);
+
+  // Track URL changes (Profile link, back/forward) inside the signed-in app.
+  useEffect(() => {
+    function onPop(): void {
+      setRoute(parseRoute());
+    }
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,8 +86,20 @@ function SignedInApp(): JSX.Element {
   const tenantId = user?.tenantId ?? "default";
   const connected = connection !== null && connection.status === "connected";
 
+  if (route.name === "profile") {
+    return (
+      <ProfileView
+        onBack={() => {
+          navigate("/");
+        }}
+      />
+    );
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
+      {/* SINGULAR header — the only chrome in the signed-in app. The embedded
+          dashboard renders no header of its own. */}
       <header className="sticky top-0 z-20 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <button
@@ -82,6 +111,14 @@ function SignedInApp(): JSX.Element {
             Passthrough
           </button>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/profile")}
+              data-testid="profile-link"
+              className="rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+            >
+              Profile
+            </button>
             <span className="hidden text-xs text-zinc-500 sm:inline">
               {user?.email ?? "signed in"}
             </span>
