@@ -21,6 +21,9 @@ prometheus-passthrough/
 │   ├── tsconfig.json
 │   ├── src/
 │   │   ├── index.ts                    # Fastify server entry point
+│   │   ├── db/
+│   │   │   ├── migrations/
+│   │   │   │   └── MIGRATIONS.md      # Migration system guide (add/run/status)
 │   │   ├── config/
 │   │   │   └── env.ts                  # Environment schema validation (Zod/TypeBox)
 │   │   ├── db/
