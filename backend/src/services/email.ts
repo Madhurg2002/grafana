@@ -1,14 +1,19 @@
 /**
- * Share-invite email via Resend (https://resend.com).
+ * Share-invite email via Brevo (https://brevo.com, formerly Sendinblue).
  *
- * Optional by design: when RESEND_API_KEY is not configured, sends are
+ * Optional by design: when BREVO_API_KEY is not configured, sends are
  * skipped and the API reports them as skipped so the UI can fall back to
  * copy-the-link. The share link itself never depends on email delivery.
+ *
+ * Env vars:
+ *   BREVO_API_KEY  — xkeysib-… transactional API key (Settings → SMTP & API)
+ *   BREVO_FROM_EMAIL — verified sender address (e.g. alerts@yourdomain.com)
+ *   BREVO_FROM_NAME  — display name (default "Passthrough")
  */
 
-interface ResendSendResponse {
-  data?: { id?: string } | null;
-  error?: { message?: string } | null;
+interface BrevoSendResponse {
+  messageId?: string;
+  message?: string;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -27,16 +32,23 @@ export interface ShareInviteResult {
   reason?: string;
 }
 
-export async function sendShareInvite(input: ShareInviteInput): Promise<ShareInviteResult> {
-  const apiKey = process.env.RESEND_API_KEY ?? "";
-  const from = process.env.RESEND_FROM ?? "Passthrough <onboarding@resend.dev>";
+/** True when Brevo is configured — the app can send transactional mail. */
+export function emailConfigured(): boolean {
+  return (process.env.BREVO_API_KEY ?? "").length > 0;
+}
 
-  if (apiKey.length === 0) {
+export async function sendShareInvite(input: ShareInviteInput): Promise<ShareInviteResult> {
+  const apiKey = process.env.BREVO_API_KEY ?? "";
+  const fromEmail = process.env.BREVO_FROM_EMAIL ?? "";
+  const fromName = process.env.BREVO_FROM_NAME ?? "Passthrough";
+
+  if (apiKey.length === 0 || fromEmail.length === 0) {
     return {
       sent: [],
       failed: [],
       skipped: input.to,
-      reason: "Email not configured (set RESEND_API_KEY) — copy the link instead",
+      reason:
+        "Email not configured (set BREVO_API_KEY and BREVO_FROM_EMAIL) — copy the link instead",
     };
   }
 
@@ -72,22 +84,23 @@ export async function sendShareInvite(input: ShareInviteInput): Promise<ShareInv
       continue;
     }
     try {
-      const response = await fetch("https://api.resend.com/emails", {
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
         method: "POST",
         headers: {
-          authorization: `Bearer ${apiKey}`,
+          "api-key": apiKey,
           "content-type": "application/json",
+          accept: "application/json",
         },
         body: JSON.stringify({
-          from,
-          to: [email],
+          sender: { email: fromEmail, name: fromName },
+          to: [{ email }],
           subject: `[Passthrough] ${input.label} dashboard was shared with you`,
-          html,
+          htmlContent: html,
         }),
         signal: AbortSignal.timeout(8000),
       });
-      const body = (await response.json().catch(() => null)) as ResendSendResponse | null;
-      if (response.ok && body?.error === null) {
+      const body = (await response.json().catch(() => null)) as BrevoSendResponse | null;
+      if (response.ok && body?.messageId !== undefined) {
         sent.push(email);
       } else {
         failed.push(email);
