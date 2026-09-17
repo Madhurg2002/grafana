@@ -4,7 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { HealthBadge } from "../src/components/HealthBadge";
 import { StatusCard } from "../src/components/StatusCard";
 import { GaugeCard } from "../src/components/GaugeCard";
-import { formatChartTime, SparkLineCard } from "../src/components/SparkLineCard";
+import {
+  formatChartTime,
+  formatMetricValue,
+  SparkLineCard,
+} from "../src/components/SparkLineCard";
 import { ConnectForm } from "../src/components/ConnectForm";
 import { DashboardView } from "../src/components/DashboardView";
 import { AuthProvider } from "../src/hooks/useAuth";
@@ -122,6 +126,11 @@ describe("SparkLineCard", () => {
 
   it("formats each point timestamp independently", () => {
     expect(formatChartTime(1758000000000)).not.toBe(formatChartTime(1758000060000));
+  });
+
+  it("formats tooltip values without raw floating-point noise", () => {
+    expect(formatMetricValue(50.73333333333333)).toBe("50.73");
+    expect(formatMetricValue(1333.333, "bytes/s")).toBe("1.3 KB/s");
   });
 });
 
