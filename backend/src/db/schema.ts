@@ -89,11 +89,9 @@ export function getPool(): Pool {
     ): unknown {
       const last = args[args.length - 1];
       if (typeof last === "function") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return (originalQuery as (...a: unknown[]) => unknown).apply(pool, args);
       }
       const started = Date.now();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = (originalQuery as (...a: unknown[]) => Promise<unknown>).apply(pool, args);
       void result.then(
         () => observeQuery(String(args[0] ?? ""), Date.now() - started),

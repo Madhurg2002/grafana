@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Sparkles, X } from "lucide-react";
 import {
   fetchLabelValues,
@@ -152,6 +152,30 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
     suggestions.length > 0 &&
     (prediction.mode === "word" || prediction.mode === "labelName" || prediction.mode === "labelValue");
 
+  // Click anywhere outside (list or textarea) closes the suggestion list —
+  // mirrors editor behavior and stops the overlay from lingering over the
+  // form buttons.
+  const listRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!showList) {
+      return;
+    }
+    const onPointerDown = (event: MouseEvent): void => {
+      const target = event.target as Node;
+      if (listRef.current?.contains(target)) {
+        return;
+      }
+      if (inputRef?.current?.contains(target)) {
+        return;
+      }
+      setDismissed(true);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+    };
+  }, [showList]);
+
   // Keep the highlight in range whenever the suggestion set changes.
   useEffect(() => {
     setHighlight((current) => Math.min(current, Math.max(suggestions.length - 1, 0)));
@@ -262,7 +286,8 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
           cannot be clipped by the form/card, positioned under the caret. */}
       {showList && anchor !== null ? (
         <div
-          className="fixed z-[60] max-h-56 w-80 max-w-[90vw] overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950/98 shadow-2xl"
+          ref={listRef}
+          className="fixed z-[60] max-h-56 w-80 max-w-[90vw] overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl"
           style={{ top: anchor.top, left: anchor.left }}
           data-testid="promql-suggestions"
           role="listbox"

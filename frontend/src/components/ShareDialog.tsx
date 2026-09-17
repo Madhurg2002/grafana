@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { Building2, Copy, Eye, Globe, Mail, Pencil, X } from "lucide-react";
-import { createShareLink, listOrgs, type OrgSummary, type ShareLink, type ShareAccess } from "../lib/api";
+import { useEffect, useRef, useState } from "react";
+import { Building2, Copy, Eye, Globe, Mail, Pencil, Search, X } from "lucide-react";
+import { createShareLink, listOrgs, searchUsers, type OrgSummary, type ShareLink, type ShareAccess } from "../lib/api";
 
 type Audience = "link" | "email" | "org";
 type Right = "view" | "edit";
@@ -35,6 +35,9 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
   const [audience, setAudience] = useState<Audience>("link");
   const [right, setRight] = useState<Right>("view");
   const [emails, setEmails] = useState("");
+  const [peopleQuery, setPeopleQuery] = useState("");
+  const [people, setPeople] = useState<Array<{ id: string; email: string; displayName: string | null }>>([]);
+  const peopleDebounce = useRef<number | null>(null);
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +191,73 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                   placeholder="teammate@company.com, auditor@corp.org"
                   className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
                 />
+                {/* People picker — search registered users by email or name. */}
+                <div className="relative mt-2">
+                  <Search
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600"
+                    aria-hidden
+                  />
+                  <input
+                    value={peopleQuery}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setPeopleQuery(next);
+                      if (peopleDebounce.current !== null) {
+                        window.clearTimeout(peopleDebounce.current);
+                      }
+                      if (next.trim().length < 2) {
+                        setPeople([]);
+                        return;
+                      }
+                      peopleDebounce.current = window.setTimeout(() => {
+                        searchUsers(next)
+                          .then((rows) => setPeople(rows))
+                          .catch(() => setPeople([]));
+                      }, 250);
+                    }}
+                    placeholder="Search people by email or name…"
+                    title="Find registered users to add to the allow-list — type at least 2 characters"
+                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900 pl-8 pr-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  />
+                  {people.length > 0 ? (
+                    <ul
+                      className="absolute z-10 mt-1 max-h-44 w-full overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl"
+                      role="listbox"
+                      aria-label="Matching users"
+                    >
+                      {people.map((person) => (
+                        <li key={person.id}>
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={false}
+                            title={`Add ${person.email} to the allow-list`}
+                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 transition hover:bg-emerald-500/10 hover:text-emerald-200"
+                            onClick={() => {
+                              setEmails((current) => {
+                                const existing = current
+                                  .split(/[,,,]+/)
+                                  .map((e) => e.trim())
+                                  .filter((e) => e.length > 0);
+                                if (existing.includes(person.email)) {
+                                  return current;
+                                }
+                                return [...existing, person.email].join(", ");
+                              });
+                              setPeopleQuery("");
+                              setPeople([]);
+                            }}
+                          >
+                            <span className="min-w-0 truncate">{person.email}</span>
+                            {person.displayName !== null ? (
+                              <span className="shrink-0 text-[10px] text-zinc-500">{person.displayName}</span>
+                            ) : null}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
                 <p className="mt-1 text-[11px] text-zinc-600">
                   Recipients must sign in with an allowed address. We'll email an
                   invite if email is configured, otherwise copy the link.

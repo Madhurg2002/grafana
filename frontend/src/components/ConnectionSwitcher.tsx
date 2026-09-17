@@ -143,52 +143,66 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
           className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
-            Connections
-          </p>
-          <p className="mb-2 text-[11px] text-zinc-600">
-            Every upstream you have connected. Click one to make it the active
-            source for all dashboards, pages, and share links.
-          </p>
+          <div className="border-b border-zinc-800 px-5 py-4">
+            <p className="text-sm font-semibold text-zinc-100">Connections</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+              Every upstream you've connected. Click one to make it the active
+              source for all dashboards, pages, and share links.
+            </p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
           {connections.length === 0 ? (
-            <p className="mb-2 text-xs text-zinc-500">No stored connections yet.</p>
+            <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-center text-xs text-zinc-500">
+              No stored connections yet — add your first upstream below.
+            </p>
           ) : (
-            <ul className="mb-2 flex flex-col gap-1">
+            <ul className="flex flex-col gap-1.5">
               {connections.map((c) => (
                 <li
                   key={c.id}
-                  className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-900"
+                  className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 transition ${
+                    c.isActive
+                      ? "border-emerald-500/30 bg-emerald-500/[0.06]"
+                      : "border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/60"
+                  }`}
                 >
                   <button
                     type="button"
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                     disabled={busy}
+                    title={c.isActive ? "Active source — click to reconnect" : "Make this the active source"}
                     onClick={() => {
                       void handleActivate(c.id, c.label);
                       setOpen(false);
                     }}
                   >
                     {c.isActive ? (
-                      <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" aria-hidden />
+                      <Check className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
                     ) : (
-                      <span className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      <span className="h-4 w-4 shrink-0" aria-hidden />
                     )}
                     <span className="min-w-0">
-                      <span className="block truncate text-xs text-zinc-200" title={c.label}>
+                      <span className="block truncate text-sm font-medium text-zinc-100" title={c.label}>
                         {c.label}
                       </span>
                       <span
-                        className="block truncate text-[10px] text-zinc-500"
+                        className="mt-0.5 block truncate text-[11px] text-zinc-500"
                         title={`${c.upstreamType === "grafana" ? "Grafana" : "Prometheus"} · ${c.upstreamHost ?? "unknown host"}`}
                       >
                         {c.upstreamType === "grafana" ? "Grafana" : "Prometheus"} · {c.upstreamHost ?? "?"}
                       </span>
                     </span>
+                    {c.isActive ? (
+                      <span className="ml-auto shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+                        Active
+                      </span>
+                    ) : null}
                   </button>
                   <button
                     type="button"
                     aria-label={`Delete connection ${c.label}`}
-                    className="shrink-0 rounded p-1 text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+                    title="Remove this connection — dashboards fall back to any other stored upstream"
+                    className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
                     disabled={busy}
                     onClick={() => {
                       void handleDelete(c.id);
@@ -200,9 +214,10 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
               ))}
             </ul>
           )}
+          </div>
 
           {adding ? (
-            <div className="flex flex-col gap-2 border-t border-zinc-800 pt-2">
+            <div className="flex flex-col gap-2.5 border-t border-zinc-800 px-1 pt-3">
               <div>
                 <input
                   value={label}
@@ -273,7 +288,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
             <button
               type="button"
               title="Store another Prometheus or Grafana endpoint — switch between them anytime"
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-zinc-700 px-2 py-1.5 text-xs text-zinc-400 transition hover:border-emerald-500/40 hover:text-emerald-300"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-700 px-3 py-2.5 text-xs font-medium text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300"
               onClick={() => setAdding(true)}
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />

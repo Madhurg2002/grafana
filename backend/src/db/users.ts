@@ -66,6 +66,33 @@ export async function createUser(input: {
   return result.rows[0] as UserRow;
 }
 
+/**
+ * Prefix search over users by email or display name (share dialog picker).
+ * Never returns password hashes; capped results; min 2 chars to avoid
+ * enumerating the whole user base.
+ */
+export async function searchUsers(
+  query: string,
+  limit = 8
+): Promise<Array<Pick<UserRow, "id" | "email" | "display_name">>> {
+  const prefix = query.trim().toLowerCase();
+  if (prefix.length < 2) {
+    return [];
+  }
+  const pattern = `${prefix.replace(/[%_]/g, (c) => `\\${c}`)}%`;
+  const result = await getPool().query<
+    Pick<UserRow, "id" | "email" | "display_name">
+  >(
+    `SELECT id, email, display_name
+     FROM users
+     WHERE lower(email) LIKE $1 OR lower(display_name) LIKE $1
+     ORDER BY lower(email)
+     LIMIT $2`,
+    [pattern, limit]
+  );
+  return result.rows;
+}
+
 export async function findUserByEmail(email: string): Promise<UserRow | null> {
   const result = await getPool().query<UserRow>(
     "SELECT id, email, password_hash, display_name, created_at FROM users WHERE email = $1",
@@ -150,9 +177,6 @@ export async function createShareLink(input: {
   const result: QueryResult<ShareLinkRow> = await getPool().query(
     `INSERT INTO share_links (id, tenant_id, created_by, label, access, allowed_emails)
      VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (tenant_id, label) DO UPDATE
-       SET revoked = FALSE, access = EXCLUDED.access,
-           allowed_emails = EXCLUDED.allowed_emails
      RETURNING id, tenant_id, created_by, label, created_at, revoked,
                access, allowed_emails, invited_emails`,
     [
