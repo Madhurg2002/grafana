@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { requireUser } from "../middleware/auth.js";
 import {
   listSharesCreatedBy,
   listSharesForEmail,
+  searchUsers,
   type ShareLinkRow,
 } from "../db/users.js";
 
@@ -36,6 +38,31 @@ function toShare(row: ShareLinkRow): ProfileShare {
  *  - email-restricted links shared with this user's address
  */
 export async function profileRoutes(app: FastifyInstance): Promise<void> {
+  /**
+   * GET /api/users/search?q= — people picker for the share dialog.
+   * Matches email or display-name prefix; returns only safe fields.
+   */
+  app.get("/api/users/search", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (user === null) {
+      return reply;
+    }
+    const parsed = z
+      .object({ q: z.string().min(2).max(64) })
+      .safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(200).send({ users: [] }); // too-short query = no results
+    }
+    const rows = await searchUsers(parsed.data.q);
+    return reply.code(200).send({
+      users: rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        displayName: row.display_name,
+      })),
+    });
+  });
+
   app.get("/api/profile/shares", async (request, reply) => {
     const user = await requireUser(request, reply);
     if (user === null) {
