@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiBase, getToken } from "../lib/api";
+import { apiBase, getTenantToken, getToken } from "../lib/api";
 import type { HostHealth } from "./types";
 
 export type StreamStatus = "connecting" | "live" | "disconnected";
@@ -26,7 +26,7 @@ export function useSSE(tenantId: string | null): {
     }
 
     setStatus("connecting");
-    const token = getToken();
+    const token = getToken() ?? getTenantToken();
     const auth = token !== null ? `&token=${encodeURIComponent(token)}` : "";
     const source = new EventSource(
       `${apiBase()}/api/stream?tenantId=${encodeURIComponent(tenantId)}${auth}`

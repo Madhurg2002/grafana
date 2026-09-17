@@ -55,7 +55,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   // Tenant-bearing endpoints (query/stream/panels) accept the user session
   // OR the workspace-scoped token — send whichever the client has.
   const userToken = getToken();
-  const tenantToken = loadTenantToken();
+  const tenantToken = getTenantToken();
   const auth = userToken ?? tenantToken;
   const response = await fetch(`${API_BASE}${path}`, {
     method: "POST",
@@ -74,7 +74,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 const TENANT_TOKEN_STORAGE_KEY = "passthrough.tenantToken";
 
-function loadTenantToken(): string | null {
+export function getTenantToken(): string | null {
   try {
     return localStorage.getItem(TENANT_TOKEN_STORAGE_KEY);
   } catch {
@@ -305,8 +305,20 @@ export function fetchProfileShares(): Promise<{
   );
 }
 
-export function fetchShareAccessToken(id: string): Promise<{ token: string; email: string; canEdit: boolean }> {
-  return authedJson<{ token: string; email: string; canEdit: boolean }>(
+export function fetchShareAccessToken(id: string): Promise<{
+  token: string;
+  editToken?: string;
+  viewToken?: string;
+  email: string;
+  canEdit: boolean;
+}> {
+  return authedJson<{
+    token: string;
+    editToken?: string;
+    viewToken?: string;
+    email: string;
+    canEdit: boolean;
+  }>(
     `/api/share/${encodeURIComponent(id)}/access-token`,
     { method: "POST" }
   );
@@ -446,7 +458,7 @@ export function listPages(
   return authedJson<{ pages: DashboardPage[] }>(
     `/api/pages/${encodeURIComponent(tenantId)}`,
     {},
-    scopedHeaders(tenantToken ?? loadTenantToken())
+    scopedHeaders(tenantToken ?? getTenantToken())
   );
 }
 
@@ -567,7 +579,7 @@ export function listWidgets(
   return authedJson<{ widgets: PageWidget[] }>(
     `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/widgets`,
     {},
-    scopedHeaders(tenantToken ?? loadTenantToken())
+    scopedHeaders(tenantToken ?? getTenantToken())
   );
 }
 
@@ -599,7 +611,7 @@ export function createWidget(
         ...(widget.span !== undefined ? { span: widget.span } : {}),
       }),
     },
-    scopedHeaders(tenantToken ?? loadTenantToken())
+    scopedHeaders(tenantToken ?? getTenantToken())
   );
 }
 
@@ -612,7 +624,7 @@ export function updateWidget(
   return authedJson<{ widget: PageWidget }>(
     `/api/pages/${encodeURIComponent(tenantId)}/widgets/${widgetId}`,
     { method: "PATCH", body: JSON.stringify(patch) },
-    scopedHeaders(tenantToken ?? loadTenantToken())
+    scopedHeaders(tenantToken ?? getTenantToken())
   );
 }
 
@@ -624,7 +636,7 @@ export function deleteWidget(
   return authedJson<{ removed: boolean }>(
     `/api/pages/${encodeURIComponent(tenantId)}/widgets/${widgetId}`,
     { method: "DELETE" },
-    scopedHeaders(tenantToken ?? loadTenantToken())
+    scopedHeaders(tenantToken ?? getTenantToken())
   );
 }
 
@@ -637,7 +649,7 @@ export function reorderWidgets(
   return authedJson<{ ok: boolean }>(
     `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/widgets/reorder`,
     { method: "POST", body: JSON.stringify({ positions }) },
-    scopedHeaders(tenantToken ?? loadTenantToken())
+    scopedHeaders(tenantToken ?? getTenantToken())
   );
 }
 
@@ -649,7 +661,7 @@ export function makePageHome(
   return authedJson<{ ok: boolean }>(
     `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/home`,
     { method: "POST" },
-    scopedHeaders(tenantToken ?? loadTenantToken())
+    scopedHeaders(tenantToken ?? getTenantToken())
   );
 }
 
@@ -667,7 +679,7 @@ export function updatePageSettings(
   return authedJson<{ ok: boolean }>(
     `/api/pages/${encodeURIComponent(tenantId)}/${pageId}/settings`,
     { method: "PATCH", body: JSON.stringify(settings) },
-    scopedHeaders(tenantToken ?? loadTenantToken())
+    scopedHeaders(tenantToken ?? getTenantToken())
   );
 }
 

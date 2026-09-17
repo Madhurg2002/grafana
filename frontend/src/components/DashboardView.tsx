@@ -46,13 +46,14 @@ export function DashboardView({
   // Internal tenant IDs never render in the UI (callers pass embedded mode).
   void tenantId.length;
   const { status } = useSSE(tenantId);
-  const { token } = useAuth();
+  const { token, tenantToken } = useAuth();
+  const hasWorkspaceAccess = token !== null || tenantToken !== null;
   const [activeLabel, setActiveLabel] = useState<string>("default");
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   // The built-in essentials strip is optional per page — the pages workspace
   // reports the active page; pages that opt out render only their own widgets.
   const [activePage, setActivePage] = useState<DashboardPage | null>(null);
-  const showBuiltins = token === null ? true : activePage === null ? true : activePage.show_builtins !== false;
+  const showBuiltins = !hasWorkspaceAccess || activePage === null ? true : activePage.show_builtins !== false;
   // The built-in strip follows a 1h window; pages override their own.
   const cpu = useInstantMetric(tenantId, DEFAULT_QUERIES.cpu);
   const ram = useInstantMetric(tenantId, DEFAULT_QUERIES.ram);
@@ -203,7 +204,7 @@ export function DashboardView({
         </section>
         ) : null}
 
-        {token !== null ? (
+        {hasWorkspaceAccess ? (
           <CustomPanels tenantId={tenantId} wide onActivePageChange={setActivePage} />
         ) : null}
 

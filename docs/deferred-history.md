@@ -19,6 +19,7 @@
 | User accounts | Shipped signup, login, profile access, scrypt password hashing, and HMAC sessions. |
 | Shareable dashboard links | Shipped owner-managed public share links and read-only dashboard snapshots. |
 | Share access modes | Shipped anyone, email allow-list, and organization view/edit access with signed short-lived tokens. |
+| Edit-enabled share links | Shipped public, email, and organization edit links with short-lived share-bound workspace tokens and the existing dashboard editor surface. |
 | Tenant authorization enforcement | Shipped access checks across queries, streams, metrics, panels, pages, widgets, and connection management. |
 | Organizations | Shipped invite-code joining, member rosters, workspace attachment, and organization-scoped sharing. |
 | Dashboard pages and widgets | Shipped named pages, selectable home pages, persisted widgets, ordering, spans, refresh settings, and shared-view rendering. |

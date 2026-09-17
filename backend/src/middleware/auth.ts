@@ -1,7 +1,7 @@
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getEnv } from "../config/env.js";
-import { canEditTenant, tenantHasOwner } from "../db/users.js";
+import { canEditTenant, getShareLink, tenantHasOwner } from "../db/users.js";
 
 /**
  * HMAC-signed session tokens (JWT-shaped, no external dependency).
@@ -20,6 +20,8 @@ export interface UserClaims {
 export interface TenantClaims {
   tenantId: string;
   issuedAt: number;
+  exp?: number;
+  shareId?: string;
   type: "tenant";
 }
 
@@ -58,8 +60,14 @@ export function issueUserToken(userId: string, email: string): string {
   return `${payload}.${sign(payload)}`;
 }
 
-export function issueTenantToken(tenantId: string): string {
-  const claims: TenantClaims = { tenantId, issuedAt: Date.now(), type: "tenant" };
+export function issueTenantToken(tenantId: string, ttlMs?: number, shareId?: string): string {
+  const claims: TenantClaims = {
+    tenantId,
+    issuedAt: Date.now(),
+    ...(ttlMs !== undefined ? { exp: Date.now() + ttlMs } : {}),
+    ...(shareId !== undefined ? { shareId } : {}),
+    type: "tenant",
+  };
   const payload = base64UrlEncode(JSON.stringify(claims));
   return `${payload}.${sign(payload)}`;
 }
@@ -88,6 +96,9 @@ export function verifyToken(token: string): SessionClaims | null {
       return claims;
     }
     if (typeof claims.tenantId !== "string" || typeof claims.issuedAt !== "number") {
+      return null;
+    }
+    if (claims.exp !== undefined && (typeof claims.exp !== "number" || claims.exp < Date.now())) {
       return null;
     }
     return claims;
@@ -196,6 +207,18 @@ export async function requireTenantAccess(
   if (claims.tenantId !== tenantId) {
     await reply.code(403).send({ error: "Token does not grant access to this workspace" });
     return false;
+  }
+  if (claims.shareId !== undefined) {
+    const share = await getShareLink(claims.shareId);
+    if (
+      share === null ||
+      share.revoked ||
+      share.tenant_id !== tenantId ||
+      !share.access.endsWith("edit")
+    ) {
+      await reply.code(403).send({ error: "Share edit access is no longer valid" });
+      return false;
+    }
   }
   return true;
 }

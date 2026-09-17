@@ -42,6 +42,16 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<(ShareLink & { invited?: string[]; skipped?: string[] }) | null>(null);
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
+  const copyResetTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimer.current !== null) {
+        window.clearTimeout(copyResetTimer.current);
+      }
+    };
+  }, []);
 
   // Org audience needs the workspace attached to an org — load memberships.
   useEffect(() => {
@@ -64,6 +74,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
   async function handleCreate(): Promise<void> {
     setBusy(true);
     setError(null);
+    setCopyStatus("idle");
     try {
       const emailList =
         audience === "email"
@@ -91,6 +102,22 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
   }
 
   const fullUrl = created !== null ? `${window.location.origin}${created.url}` : "";
+
+  async function handleCopyLink(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      setCopyStatus("copied");
+      if (copyResetTimer.current !== null) {
+        window.clearTimeout(copyResetTimer.current);
+      }
+      copyResetTimer.current = window.setTimeout(() => {
+        setCopyStatus("idle");
+        copyResetTimer.current = null;
+      }, 2500);
+    } catch {
+      setCopyStatus("failed");
+    }
+  }
 
   const audienceButton = (
     key: Audience,
@@ -341,14 +368,12 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                   title="Copy the share URL to your clipboard"
                   className="flex-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
                   onClick={() => {
-                    void navigator.clipboard.writeText(fullUrl).catch(() => {
-                      /* clipboard unavailable — URL is shown above */
-                    });
+                    void handleCopyLink();
                   }}
                 >
                   <span className="flex items-center justify-center gap-1.5">
                     <Copy className="h-3.5 w-3.5" aria-hidden />
-                    Copy link
+                    {copyStatus === "copied" ? "Copied" : copyStatus === "failed" ? "Copy failed" : "Copy link"}
                   </span>
                 </button>
               )}

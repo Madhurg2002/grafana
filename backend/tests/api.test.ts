@@ -7,6 +7,8 @@ import { authRoutes } from "../src/routes/auth.js";
 import { shareRoutes } from "../src/routes/share.js";
 import { profileRoutes } from "../src/routes/profile.js";
 import { orgRoutes } from "../src/routes/orgs.js";
+import { getShareLink } from "../src/db/users.js";
+import { verifyToken } from "../src/middleware/auth.js";
 import { setEnv, type Env } from "../src/config/env.js";
 import { setQueryCache, QueryCache } from "../src/services/cache.js";
 import { setCircuitBreaker, CircuitBreaker } from "../src/services/circuitBreaker.js";
@@ -529,6 +531,33 @@ describe("API routes (app.inject)", () => {
       // 404 (link missing in mock) — NOT 400. The old bug returned 400 because
       // the client declared a JSON content-type on an empty body.
       expect(response.statusCode).toBe(404);
+    });
+
+    it("issues a short-lived workspace token for anyone-edit shares", async () => {
+      vi.mocked(getShareLink).mockResolvedValue({
+        id: "shr_edit123",
+        tenant_id: "tenant-edit",
+        created_by: "usr_test123",
+        label: "edit",
+        created_at: new Date(),
+        revoked: false,
+        access: "anyone_edit",
+        allowed_emails: [],
+        invited_emails: [],
+      });
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/share/shr_edit123/access-token",
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as { token: string; editToken: string; canEdit: boolean };
+      expect(body.canEdit).toBe(true);
+      expect(body.editToken).toBe(body.token);
+      const claims = verifyToken(body.editToken);
+      expect(claims?.type).toBe("tenant");
+      expect(claims?.type === "tenant" ? claims.tenantId : null).toBe("tenant-edit");
+      expect(claims?.type === "tenant" ? claims.shareId : undefined).toBe("shr_edit123");
+      expect(claims?.type === "tenant" ? claims.exp : undefined).toBeGreaterThan(Date.now());
     });
 
     it("GET /api/auth/me rejects missing/invalid tokens with 401", async () => {
