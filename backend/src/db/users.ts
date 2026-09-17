@@ -10,11 +10,31 @@ export interface UserRow {
   created_at: Date;
 }
 
+export interface OrganizationRow {
+  id: string;
+  name: string;
+  invite_code: string;
+  created_by: string | null;
+  created_at: Date;
+}
+
+export interface OrgMemberRow {
+  org_id: string;
+  user_id: string;
+  role: "owner" | "member";
+  created_at: Date;
+  /** Joined for client payloads. */
+  email?: string;
+  display_name?: string | null;
+}
+
 export type ShareAccess =
   | "anyone_view"
   | "anyone_edit"
   | "email_view"
-  | "email_edit";
+  | "email_edit"
+  | "org_view"
+  | "org_edit";
 
 export interface ShareLinkRow {
   id: string;
@@ -86,6 +106,37 @@ export async function tenantOwnedBy(
     [tenantId, userId]
   );
   return result.rowCount === 1;
+}
+
+/** True when the tenant belongs to a named account (vs a legacy no-account workspace). */
+export async function tenantHasOwner(tenantId: string): Promise<boolean> {
+  const result = await getPool().query<{ owner_id: string | null }>(
+    "SELECT owner_id FROM tenants WHERE id = $1",
+    [tenantId]
+  );
+  const owner = result.rows[0]?.owner_id;
+  return owner !== null && owner !== undefined;
+}
+
+/**
+ * View access: the owner, or any member of the tenant's org.
+ * Org sharing works by attaching the tenant to an org — every member of
+ * that org can then read the workspace's dashboards.
+ */
+export async function canViewTenant(tenantId: string, userId: string): Promise<boolean> {
+  if (await tenantOwnedBy(tenantId, userId)) {
+    return true;
+  }
+  const orgId = await getTenantOrg(tenantId);
+  return orgId !== null && (await isOrgMember(orgId, userId));
+}
+
+/**
+ * Edit access: the owner, or any member of the tenant's org (collaborative
+ * editing is the point of sharing a workspace to an org).
+ */
+export async function canEditTenant(tenantId: string, userId: string): Promise<boolean> {
+  return canViewTenant(tenantId, userId);
 }
 
 export async function createShareLink(input: {
@@ -189,4 +240,152 @@ export async function listSharesForEmail(email: string): Promise<ShareLinkRow[]>
     [email.toLowerCase()]
   );
   return result.rows;
+}
+
+// ---------------------------------------------------------------------------
+// Account settings: password change (verifies the current password first).
+// ---------------------------------------------------------------------------
+
+export async function updatePassword(
+  userId: string,
+  passwordHash: string
+): Promise<boolean> {
+  const result = await getPool().query(
+    "UPDATE users SET password_hash = $1 WHERE id = $2",
+    [passwordHash, userId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function updateDisplayName(userId: string, name: string): Promise<boolean> {
+  const result = await getPool().query(
+    "UPDATE users SET display_name = $1 WHERE id = $2",
+    [name, userId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Organizations: shared workspaces. Sharing to an org = every member can
+// open (and, with edit rights, modify) the tenant's dashboards.
+// ---------------------------------------------------------------------------
+
+export async function createOrganization(input: {
+  userId: string;
+  name: string;
+}): Promise<OrganizationRow> {
+  const org = await getPool().query<OrganizationRow>(
+    `INSERT INTO organizations (id, name, invite_code, created_by)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, name, invite_code, created_by, created_at`,
+    [newId("org"), input.name, newId("inv"), input.userId]
+  );
+  const row = org.rows[0] as OrganizationRow;
+  await getPool().query(
+    `INSERT INTO org_members (org_id, user_id, role)
+     VALUES ($1, $2, 'owner')
+     ON CONFLICT DO NOTHING`,
+    [row.id, input.userId]
+  );
+  return row;
+}
+
+export async function joinOrganization(
+  userId: string,
+  inviteCode: string
+): Promise<OrganizationRow | null> {
+  const org = await getPool().query<OrganizationRow>(
+    "SELECT id, name, invite_code, created_by, created_at FROM organizations WHERE invite_code = $1",
+    [inviteCode.trim()]
+  );
+  const row = org.rows[0] ?? null;
+  if (row === null) {
+    return null;
+  }
+  await getPool().query(
+    `INSERT INTO org_members (org_id, user_id, role)
+     VALUES ($1, $2, 'member')
+     ON CONFLICT DO NOTHING`,
+    [row.id, userId]
+  );
+  return row;
+}
+
+export async function listUserOrganizations(userId: string): Promise<Array<OrganizationRow & { role: string }>> {
+  const result = await getPool().query<OrganizationRow & { role: string }>(
+    `SELECT o.id, o.name, o.invite_code, o.created_by, o.created_at, m.role
+     FROM organizations o
+     JOIN org_members m ON m.org_id = o.id
+     WHERE m.user_id = $1
+     ORDER BY o.created_at`,
+    [userId]
+  );
+  return result.rows;
+}
+
+export async function listOrgMembers(orgId: string): Promise<OrgMemberRow[]> {
+  const result = await getPool().query<OrgMemberRow>(
+    `SELECT m.org_id, m.user_id, m.role, m.created_at,
+            u.email, u.display_name
+     FROM org_members m
+     JOIN users u ON u.id = m.user_id
+     WHERE m.org_id = $1
+     ORDER BY m.created_at`,
+    [orgId]
+  );
+  return result.rows;
+}
+
+export async function isOrgMember(orgId: string, userId: string): Promise<boolean> {
+  const result = await getPool().query<{ user_id: string }>(
+    "SELECT user_id FROM org_members WHERE org_id = $1 AND user_id = $2",
+    [orgId, userId]
+  );
+  return result.rowCount === 1;
+}
+
+export async function regenerateInviteCode(orgId: string, userId: string): Promise<string | null> {
+  // Only owners rotate the invite code.
+  const owner = await getPool().query<{ role: string }>(
+    "SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2",
+    [orgId, userId]
+  );
+  if (owner.rows[0]?.role !== "owner") {
+    return null;
+  }
+  const code = newId("inv");
+  await getPool().query("UPDATE organizations SET invite_code = $1 WHERE id = $2", [
+    code,
+    orgId,
+  ]);
+  return code;
+}
+
+export async function attachTenantToOrg(
+  tenantId: string,
+  orgId: string,
+  userId: string
+): Promise<boolean> {
+  const member = await isOrgMember(orgId, userId);
+  if (!member) {
+    return false;
+  }
+  const result = await getPool().query(
+    "UPDATE tenants SET org_id = $1 WHERE id = $2",
+    [orgId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function getTenantOrg(tenantId: string): Promise<string | null> {
+  const result = await getPool().query<{ org_id: string | null }>(
+    "SELECT org_id FROM tenants WHERE id = $1",
+    [tenantId]
+  );
+  return result.rows[0]?.org_id ?? null;
+}
+
+/** Detaches a tenant from any org (its org shares then stop granting access). */
+export async function detachTenantFromOrg(tenantId: string): Promise<void> {
+  await getPool().query("UPDATE tenants SET org_id = NULL WHERE id = $1", [tenantId]);
 }

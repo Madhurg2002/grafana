@@ -1,4 +1,5 @@
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
+import { z } from "zod";
 
 /**
  * PostgreSQL access for multi-tenant metadata. Prometheus auth tokens are
@@ -277,12 +278,19 @@ export interface DashboardPageRow {
   tenant_id: string;
   name: string;
   position: number;
+  is_home?: boolean;
+  default_span?: number;
+  refresh_seconds?: number;
+  window_minutes?: number;
 }
 
 export async function listPages(tenantId: string): Promise<DashboardPageRow[]> {
   const result = await getPool().query<DashboardPageRow>(
-    `SELECT id, tenant_id, name, position FROM dashboard_pages
-     WHERE tenant_id = $1 ORDER BY position, id`,
+    `SELECT id, tenant_id, name, position, is_home, default_span,
+            refresh_seconds, window_minutes
+     FROM dashboard_pages
+     WHERE tenant_id = $1
+     ORDER BY is_home DESC, position, id`,
     [tenantId]
   );
   return result.rows;
@@ -292,10 +300,92 @@ export async function createPage(tenantId: string, name: string): Promise<Dashbo
   const result = await getPool().query<DashboardPageRow>(
     `INSERT INTO dashboard_pages (tenant_id, name, position)
      VALUES ($1, $2, COALESCE((SELECT MAX(position) + 1 FROM dashboard_pages WHERE tenant_id = $1), 0))
-     RETURNING id, tenant_id, name, position`,
+     RETURNING id, tenant_id, name, position, is_home, default_span,
+               refresh_seconds, window_minutes`,
     [tenantId, name]
   );
   return result.rows[0] as DashboardPageRow;
+}
+
+/** Promotes a page to be the tenant's home (the app's landing page). */
+export async function setHomePage(tenantId: string, pageId: number): Promise<boolean> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    const owned = await client.query<{ id: number }>(
+      "SELECT id FROM dashboard_pages WHERE id = $1 AND tenant_id = $2",
+      [pageId, tenantId]
+    );
+    if ((owned.rowCount ?? 0) !== 1) {
+      await client.query("ROLLBACK");
+      return false;
+    }
+    await client.query(
+      "UPDATE dashboard_pages SET is_home = FALSE WHERE tenant_id = $1",
+      [tenantId]
+    );
+    await client.query(
+      "UPDATE dashboard_pages SET is_home = TRUE, position = 0 WHERE id = $1",
+      [pageId]
+    );
+    // Keep positions unique+ordered after the promotion.
+    await client.query(
+      `UPDATE dashboard_pages p
+       SET position = sub.rn
+       FROM (
+         SELECT id, ROW_NUMBER() OVER (ORDER BY is_home DESC, position, id) - 1 AS rn
+         FROM dashboard_pages WHERE tenant_id = $1
+       ) sub
+       WHERE p.id = sub.id AND p.tenant_id = $1`,
+      [tenantId]
+    );
+    await client.query("COMMIT");
+    return true;
+  } catch {
+    await client.query("ROLLBACK");
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
+const pageSettingsSchemaSpan = z.coerce.number().int().min(1).max(3);
+
+/** Updates page display settings (span, refresh cadence, time window). */
+export async function updatePageSettings(
+  tenantId: string,
+  pageId: number,
+  settings: { defaultSpan?: number; refreshSeconds?: number; windowMinutes?: number }
+): Promise<boolean> {
+  const sets: string[] = [];
+  const values: Array<string | number> = [];
+  if (settings.defaultSpan !== undefined) {
+    const span = pageSettingsSchemaSpan.safeParse(settings.defaultSpan);
+    if (!span.success) return false;
+    values.push(span.data);
+    sets.push(`default_span = $${values.length}`);
+  }
+  if (settings.refreshSeconds !== undefined) {
+    const refresh = z.coerce.number().int().min(5).max(600).safeParse(settings.refreshSeconds);
+    if (!refresh.success) return false;
+    values.push(refresh.data);
+    sets.push(`refresh_seconds = $${values.length}`);
+  }
+  if (settings.windowMinutes !== undefined) {
+    const win = z.coerce.number().int().min(5).max(10080).safeParse(settings.windowMinutes);
+    if (!win.success) return false;
+    values.push(win.data);
+    sets.push(`window_minutes = $${values.length}`);
+  }
+  if (sets.length === 0) {
+    return false;
+  }
+  values.push(pageId, tenantId);
+  const result = await getPool().query(
+    `UPDATE dashboard_pages SET ${sets.join(", ")} WHERE id = $${values.length - 1} AND tenant_id = $${values.length}`,
+    values
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function deletePage(tenantId: string, pageId: number): Promise<boolean> {
@@ -381,4 +471,140 @@ export async function reorderPanels(
 export async function healthcheck(): Promise<boolean> {
   const result = await getPool().query<QueryResultRow>("SELECT 1 AS ok");
   return result.rowCount === 1;
+}
+
+// ---------------------------------------------------------------------------
+// Page widgets — everything visible on a dashboard page (migration 009).
+// ---------------------------------------------------------------------------
+
+export type WidgetKind = "stat" | "gauge" | "sparkline" | "hosts_table";
+
+export interface PageWidgetRow {
+  id: number;
+  page_id: number;
+  tenant_id: string;
+  kind: WidgetKind;
+  title: string;
+  promql: string;
+  unit: string | null;
+  span: number;
+  position: number;
+  created_at: Date;
+}
+
+export async function listWidgets(pageId: number, tenantId: string): Promise<PageWidgetRow[]> {
+  const result = await getPool().query<PageWidgetRow>(
+    `SELECT id, page_id, tenant_id, kind, title, promql, unit, span, position, created_at
+     FROM page_widgets WHERE page_id = $1 AND tenant_id = $2
+     ORDER BY position, id`,
+    [pageId, tenantId]
+  );
+  return result.rows;
+}
+
+export async function createWidget(input: {
+  pageId: number;
+  tenantId: string;
+  kind: WidgetKind;
+  title: string;
+  promql: string;
+  unit?: string | null;
+  span?: number;
+}): Promise<PageWidgetRow> {
+  const result = await getPool().query<PageWidgetRow>(
+    `INSERT INTO page_widgets (page_id, tenant_id, kind, title, promql, unit, span, position)
+     VALUES ($1, $2, $3, $4, $5, $6, $7,
+             COALESCE((SELECT MAX(position) + 1 FROM page_widgets WHERE page_id = $1), 0))
+     RETURNING id, page_id, tenant_id, kind, title, promql, unit, span, position, created_at`,
+    [
+      input.pageId,
+      input.tenantId,
+      input.kind,
+      input.title,
+      input.promql,
+      input.unit ?? null,
+      input.span ?? 1,
+    ]
+  );
+  return result.rows[0] as PageWidgetRow;
+}
+
+export async function updateWidget(
+  tenantId: string,
+  widgetId: number,
+  patch: { title?: string; promql?: string; unit?: string | null; span?: number; kind?: WidgetKind }
+): Promise<PageWidgetRow | null> {
+  const sets: string[] = [];
+  const values: Array<string | number | null> = [];
+  if (patch.title !== undefined) {
+    values.push(patch.title);
+    sets.push(`title = $${values.length}`);
+  }
+  if (patch.promql !== undefined) {
+    values.push(patch.promql);
+    sets.push(`promql = $${values.length}`);
+  }
+  if (patch.unit !== undefined) {
+    values.push(patch.unit);
+    sets.push(`unit = $${values.length}`);
+  }
+  if (patch.span !== undefined) {
+    values.push(patch.span);
+    sets.push(`span = $${values.length}`);
+  }
+  if (patch.kind !== undefined) {
+    values.push(patch.kind);
+    sets.push(`kind = $${values.length}`);
+  }
+  if (sets.length === 0) {
+    return null;
+  }
+  values.push(widgetId, tenantId);
+  const result = await getPool().query<PageWidgetRow>(
+    `UPDATE page_widgets SET ${sets.join(", ")}
+     WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
+     RETURNING id, page_id, tenant_id, kind, title, promql, unit, span, position, created_at`,
+    values
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function deleteWidget(tenantId: string, widgetId: number): Promise<boolean> {
+  const result = await getPool().query(
+    "DELETE FROM page_widgets WHERE id = $1 AND tenant_id = $2",
+    [widgetId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Reorders widgets within a page (tenant-scoped). */
+export async function reorderWidgets(
+  tenantId: string,
+  pageId: number,
+  positions: PanelPosition[]
+): Promise<boolean> {
+  if (positions.length === 0) {
+    return true;
+  }
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    for (const { id, position } of positions) {
+      const result = await client.query(
+        "UPDATE page_widgets SET position = $1 WHERE id = $2 AND tenant_id = $3 AND page_id = $4",
+        [position, id, tenantId, pageId]
+      );
+      if ((result.rowCount ?? 0) === 0) {
+        await client.query("ROLLBACK");
+        return false;
+      }
+    }
+    await client.query("COMMIT");
+    return true;
+  } catch {
+    await client.query("ROLLBACK");
+    return false;
+  } finally {
+    client.release();
+  }
 }

@@ -1,65 +1,62 @@
-import { useState } from "react";
-import { Copy, Eye, Globe, Mail, Pencil, X } from "lucide-react";
-import { createShareLink, type ShareLink } from "../lib/api";
+import { useEffect, useState } from "react";
+import { Building2, Copy, Eye, Globe, Mail, Pencil, X } from "lucide-react";
+import { createShareLink, listOrgs, type OrgSummary, type ShareLink, type ShareAccess } from "../lib/api";
 
-type AccessChoice = "anyone_view" | "anyone_edit" | "email_view" | "email_edit";
+type Audience = "link" | "email" | "org";
+type Right = "view" | "edit";
 
 interface Props {
   tenantId: string;
   onClose: () => void;
 }
 
-const ACCESS_OPTIONS: Array<{
-  key: AccessChoice;
-  audience: "link" | "email";
-  right: "view" | "edit";
-  title: string;
-  hint: string;
-}> = [
-  {
-    key: "anyone_view",
-    audience: "link",
-    right: "view",
-    title: "Anyone with the link · view only",
-    hint: "No sign-in needed. Read-only dashboard.",
-  },
-  {
-    key: "anyone_edit",
-    audience: "link",
-    right: "edit",
-    title: "Anyone with the link · can edit",
-    hint: "No sign-in needed. Panel changes allowed.",
-  },
-  {
-    key: "email_view",
-    audience: "email",
-    right: "view",
-    title: "Specific emails · view only",
-    hint: "Only allow-listed addresses can open it.",
-  },
-  {
-    key: "email_edit",
-    audience: "email",
-    right: "edit",
-    title: "Specific emails · can edit",
-    hint: "Allow-listed addresses can edit panels.",
-  },
-];
+/** Audience × right → the exact access enum the backend validates. */
+function toAccess(audience: Audience, right: Right): ShareAccess {
+  if (audience === "link") return right === "edit" ? "anyone_edit" : "anyone_view";
+  if (audience === "email") return right === "edit" ? "email_edit" : "email_view";
+  return right === "edit" ? "org_edit" : "org_view";
+}
+
+const HINTS: Record<ShareAccess, string> = {
+  anyone_view: "No sign-in needed. Read-only dashboard.",
+  anyone_edit: "No sign-in needed. Panel changes allowed.",
+  email_view: "Only allow-listed addresses can open it (view only).",
+  email_edit: "Allow-listed addresses can edit panels.",
+  org_view: "Every member of this workspace's org can view it.",
+  org_edit: "Every member of this workspace's org can edit panels.",
+};
 
 /**
- * Share dialog: pick the audience (anyone-with-link vs specific emails) and
- * the right (view-only vs edit). Optionally emails the invite via the
- * backend (Resend); falls back to copy-link when email isn't configured.
+ * Share dialog: pick the audience (anyone-with-link / specific emails /
+ * your org) and the right (view-only vs edit). Optionally emails the invite
+ * via the backend (Resend); falls back to copy-link when email isn't set up.
  */
 export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
-  const [audience, setAudience] = useState<"link" | "email">("link");
-  const [right, setRight] = useState<"view" | "edit">("view");
+  const [audience, setAudience] = useState<Audience>("link");
+  const [right, setRight] = useState<Right>("view");
   const [emails, setEmails] = useState("");
+  const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<(ShareLink & { invited?: string[]; skipped?: string[] }) | null>(null);
 
-  const access: AccessChoice = `${audience}_${right}` as AccessChoice;
+  // Org audience needs the workspace attached to an org — load memberships.
+  useEffect(() => {
+    let cancelled = false;
+    listOrgs()
+      .then((payload) => {
+        if (!cancelled) setOrgs(payload.orgs);
+      })
+      .catch(() => {
+        if (!cancelled) setOrgs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const access = toAccess(audience, right);
+  const hasOrg = orgs.length > 0;
 
   async function handleCreate(): Promise<void> {
     setBusy(true);
@@ -72,7 +69,13 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
               .map((e) => e.trim())
               .filter((e) => e.length > 0)
           : undefined;
-      const response = (await createShareLink(tenantId, undefined, access, emailList, audience === "email")) as ShareLink & {
+      const response = (await createShareLink(
+        tenantId,
+        undefined,
+        access,
+        emailList,
+        audience === "email"
+      )) as ShareLink & {
         invited?: string[];
         skipped?: string[];
       };
@@ -85,6 +88,31 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
   }
 
   const fullUrl = created !== null ? `${window.location.origin}${created.url}` : "";
+
+  const audienceButton = (
+    key: Audience,
+    label: string,
+    Icon: typeof Globe,
+    disabled = false,
+    title = ""
+  ): JSX.Element => (
+    <button
+      key={key}
+      type="button"
+      data-testid={`audience-${key}`}
+      disabled={disabled}
+      title={title}
+      onClick={() => setAudience(key)}
+      className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
+        audience === key
+          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
+          : "border-zinc-800 text-zinc-400 hover:border-zinc-600"
+      } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden />
+      {label}
+    </button>
+  );
 
   return (
     <div
@@ -109,37 +137,27 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
         {created === null ? (
           <>
             {/* Audience */}
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {(
-                [
-                  { key: "link", label: "Anyone with link", icon: Globe },
-                  { key: "email", label: "Specific emails", icon: Mail },
-                ] as Array<{ key: "link" | "email"; label: string; icon: typeof Globe }>
-              ).map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  data-testid={`audience-${option.key}`}
-                  onClick={() => setAudience(option.key)}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
-                    audience === option.key
-                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
-                      : "border-zinc-800 text-zinc-400 hover:border-zinc-600"
-                  }`}
-                >
-                  <option.icon className="h-3.5 w-3.5" aria-hidden />
-                  {option.label}
-                </button>
-              ))}
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              {audienceButton("link", "Anyone with link", Globe)}
+              {audienceButton("email", "Specific emails", Mail)}
+              {audienceButton(
+                "org",
+                hasOrg ? "My org" : "My org (none)",
+                Building2,
+                !hasOrg,
+                hasOrg
+                  ? `Share to ${orgs.map((o) => o.name).join(", ")}`
+                  : "Create or join an org in Profile → Organizations first"
+              )}
             </div>
 
             {/* Right */}
             <div className="mt-2 grid grid-cols-2 gap-2">
               {(
                 [
-                  { key: "view", label: "View only", icon: Eye },
-                  { key: "edit", label: "Can edit", icon: Pencil },
-                ] as Array<{ key: "view" | "edit"; label: string; icon: typeof Eye }>
+                  { key: "view" as Right, label: "View only", icon: Eye },
+                  { key: "edit" as Right, label: "Can edit", icon: Pencil },
+                ]
               ).map((option) => (
                 <button
                   key={option.key}
@@ -177,12 +195,13 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
               </div>
             ) : null}
 
-            <p className="mt-3 text-[11px] text-zinc-600">
-              {ACCESS_OPTIONS.find((o) => o.key === access)?.hint}
-            </p>
+            <p className="mt-3 text-[11px] text-zinc-600">{HINTS[access]}</p>
 
             {error !== null ? (
-              <p className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300" role="alert">
+              <p
+                className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+                role="alert"
+              >
                 {error}
               </p>
             ) : null}
@@ -212,15 +231,24 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
             <p className="mt-4 text-xs text-zinc-400">
               Share link ready —{" "}
               <span className="text-emerald-300">
-                {created.access?.startsWith("email") === true
-                  ? "restricted to the allow-list"
-                  : "anyone with the link"}
+                {created.access === undefined || created.access.startsWith("anyone")
+                  ? "anyone with the link"
+                  : created.access.startsWith("email")
+                    ? "restricted to the allow-list"
+                    : "restricted to your org members"}
               </span>{" "}
               ({created.access?.endsWith("edit") === true ? "edit" : "view only"}).
             </p>
-            <div className="mt-2 break-all rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-200">
-              {fullUrl}
-            </div>
+            {created.access !== undefined && created.access.startsWith("org") ? (
+              <p className="mt-2 text-[11px] text-amber-300/90">
+                Org shares don't need a copied link — members open the dashboard
+                and are recognized by their signed-in account.
+              </p>
+            ) : (
+              <div className="mt-2 break-all rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-200">
+                {fullUrl}
+              </div>
+            )}
             {created.invited !== undefined && created.invited.length > 0 ? (
               <p className="mt-2 text-xs text-emerald-300" role="status">
                 Invitations emailed to {created.invited.length} address
@@ -235,24 +263,26 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
               </p>
             ) : null}
             <div className="mt-4 flex gap-2">
+              {created.access !== undefined && created.access.startsWith("org") ? null : (
+                <button
+                  type="button"
+                  data-testid="copy-share-link"
+                  className="flex-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(fullUrl).catch(() => {
+                      /* clipboard unavailable — URL is shown above */
+                    });
+                  }}
+                >
+                  <span className="flex items-center justify-center gap-1.5">
+                    <Copy className="h-3.5 w-3.5" aria-hidden />
+                    Copy link
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
-                data-testid="copy-share-link"
-                className="flex-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
-                onClick={() => {
-                  void navigator.clipboard.writeText(fullUrl).catch(() => {
-                    /* clipboard unavailable — URL is shown above */
-                  });
-                }}
-              >
-                <span className="flex items-center justify-center gap-1.5">
-                  <Copy className="h-3.5 w-3.5" aria-hidden />
-                  Copy link
-                </span>
-              </button>
-              <button
-                type="button"
-                className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-400 transition hover:border-zinc-600"
+                className="flex-1 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-400 transition hover:border-zinc-600"
                 onClick={onClose}
               >
                 Done

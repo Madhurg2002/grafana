@@ -94,8 +94,8 @@ export function ShareView({ id }: { id: string }): JSX.Element {
         <Lock className="h-8 w-8 text-amber-300" aria-hidden />
         <h1 className="text-lg font-semibold">This dashboard is restricted</h1>
         <p className="max-w-sm text-sm text-zinc-400">
-          Only allow-listed email addresses can open this share. Sign in with an
-          invited address and reload this page.
+          Only invited people can open this share. Sign in with an allow-listed
+          email or an account in the owning organization, then reload.
         </p>
         <a
           href="/login"

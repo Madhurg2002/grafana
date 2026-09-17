@@ -4,6 +4,8 @@ import { M004 } from "./004-upstream-type.js";
 import { M005 } from "./005-multi-connection-panels.js";
 import { M006 } from "./006-share-access.js";
 import { M007 } from "./007-dashboard-pages.js";
+import { M008 } from "./008-orgs.js";
+import { M009 } from "./009-page-widgets.js";
 
 /**
  * Ordered, immutable migrations. Once applied, a migration's SQL MUST NOT be
@@ -66,4 +68,6 @@ export const MIGRATIONS: Migration[] = [
   M005,
   M006,
   M007,
+  M008,
+  M009,
 ];
