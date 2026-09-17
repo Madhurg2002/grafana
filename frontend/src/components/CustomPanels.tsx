@@ -690,41 +690,56 @@ export function CustomPanels({ tenantId, wide = false }: Props): JSX.Element | n
 
       {adding && activePage !== null ? (
         <div className="mt-3 flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Widget title"
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
-            />
-            <select
-              value={kind}
-              onChange={(e) => setKind(e.target.value as WidgetKind)}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
-              aria-label="Widget type"
-            >
-              <option value="sparkline">Sparkline (range)</option>
-              <option value="gauge">Gauge (0–100%)</option>
-              <option value="stat">Stat (single value)</option>
-              <option value="hosts_table">Scrape-target table</option>
-            </select>
-            <select
-              value={span}
-              onChange={(e) => setSpan(Number(e.target.value))}
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
-              aria-label="Grid width"
-              title="How many grid columns this widget stretches across"
-            >
-              <option value={1}>Width: 1 column</option>
-              <option value={2}>Width: 2 columns</option>
-              <option value={3}>Width: full row</option>
-            </select>
-            <input
-              value={unit}
-              onChange={(e) => setUnit(e.target.value)}
-              placeholder="Unit (optional, e.g. bytes/s)"
-              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
-            />
+          <div className="grid grid-cols-1 gap-x-2 gap-y-2 sm:grid-cols-4">
+            <div className="flex flex-col gap-0.5">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Widget title"
+                title="Shown as the card heading — e.g. “Disk IO”"
+                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+              />
+              <p className="text-[10px] text-zinc-600">Any short name; shown as the card heading.</p>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as WidgetKind)}
+                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
+                aria-label="Widget type"
+                title="How the data is drawn: over time, as a dial, a single number, or the target table"
+              >
+                <option value="sparkline">Sparkline (range)</option>
+                <option value="gauge">Gauge (0–100%)</option>
+                <option value="stat">Stat (single value)</option>
+                <option value="hosts_table">Scrape-target table</option>
+              </select>
+              <p className="text-[10px] text-zinc-600">Line over time · dial · number · table.</p>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <select
+                value={span}
+                onChange={(e) => setSpan(Number(e.target.value))}
+                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
+                aria-label="Grid width"
+                title="How many grid columns this widget stretches across"
+              >
+                <option value={1}>Width: 1 column</option>
+                <option value={2}>Width: 2 columns</option>
+                <option value={3}>Width: full row</option>
+              </select>
+              <p className="text-[10px] text-zinc-600">Card size — stretch wide on big screens.</p>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <input
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                placeholder="Unit (optional, e.g. bytes/s)"
+                title="Appended to numbers, e.g. %, req/s, bytes"
+                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+              />
+              <p className="text-[10px] text-zinc-600">Suffix on numbers — %, req/s, bytes…</p>
+            </div>
           </div>
           {kind !== "hosts_table" ? (
             <div className="relative">
@@ -732,9 +747,15 @@ export function CustomPanels({ tenantId, wide = false }: Props): JSX.Element | n
                 value={promql}
                 onChange={(e) => setPromql(e.target.value)}
                 placeholder='PromQL — e.g. rate(node_network_receive_bytes_total{device=~"eth.*|ens.*|eno.*|bond.*"}[5m])'
+                title="PromQL query — instant for stat/gauge, range for sparkline. The backend normalizer enforces device filters, MemAvailable, and [5m]+ rate windows."
                 rows={2}
                 className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
               />
+              <p className="mt-0.5 text-[10px] text-zinc-600">
+                One PromQL expression. Sparklines render a time range; stat/gauge
+                take the latest value. Unsafe queries are auto-corrected by the
+                backend normalizer.
+              </p>
               <div className="mt-1 flex items-center gap-3">
                 <PromqlHelper tenantId={tenantId} value={promql} onChange={setPromql} />
                 <button

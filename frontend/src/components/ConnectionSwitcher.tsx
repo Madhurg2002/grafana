@@ -120,9 +120,35 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
       </button>
 
       {open ? (
-        <div className="absolute right-0 z-30 mt-2 w-80 rounded-xl border border-zinc-800 bg-zinc-950 p-3 shadow-2xl">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Connections"
+          data-testid="connection-switcher-modal"
+          onClick={() => {
+            setOpen(false);
+            setAdding(false);
+            setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setOpen(false);
+              setAdding(false);
+              setError(null);
+            }
+          }}
+        >
+        <div
+          className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
             Connections
+          </p>
+          <p className="mb-2 text-[11px] text-zinc-600">
+            Every upstream you have connected. Click one to make it the active
+            source for all dashboards, pages, and share links.
           </p>
           {connections.length === 0 ? (
             <p className="mb-2 text-xs text-zinc-500">No stored connections yet.</p>
@@ -177,27 +203,43 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
 
           {adding ? (
             <div className="flex flex-col gap-2 border-t border-zinc-800 pt-2">
-              <input
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="Label (e.g. prod, staging)"
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
-              />
-              <input
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                type="text"
-                inputMode="url"
-                placeholder="10.0.0.5:9090 or https://prom.example.com"
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
-              />
-              <input
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                type="password"
-                placeholder="Auth token (optional, encrypted)"
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
-              />
+              <div>
+                <input
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="Label (e.g. prod, staging)"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                />
+                <p className="mt-0.5 text-[10px] text-zinc-600">
+                  A short name shown in this dropdown — optional.
+                </p>
+              </div>
+              <div>
+                <input
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  type="text"
+                  inputMode="url"
+                  placeholder="10.0.0.5:9090 or https://prom.example.com"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                />
+                <p className="mt-0.5 text-[10px] text-zinc-600">
+                  Prometheus or Grafana base URL — plain <span className="font-mono">ip:port</span> or a
+                  full https URL. We detect the type and resolve Grafana to its Prometheus datasource.
+                </p>
+              </div>
+              <div>
+                <input
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  type="password"
+                  placeholder="Auth token (optional, encrypted)"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                />
+                <p className="mt-0.5 text-[10px] text-zinc-600">
+                  Only if your upstream needs a bearer token. Stored AES-256-GCM encrypted, never displayed again.
+                </p>
+              </div>
               {error !== null ? (
                 <p className="text-[11px] text-rose-400" role="alert">
                   {error}
@@ -236,6 +278,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
               Add connection
             </button>
           )}
+        </div>
         </div>
       ) : null}
 
