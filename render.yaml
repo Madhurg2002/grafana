@@ -6,6 +6,9 @@ services:
     region: oregon
     rootDir: backend
     buildCommand: npm ci && npm run build
+    # Apply pending migrations (008 orgs, 009 page_widgets, …) BEFORE the new
+    # server version starts. Idempotent: advisory-locked + checksum-verified.
+    preDeployCommand: npm run db:migrate
     startCommand: npm run start
     healthCheckPath: /api/health
     envVars:
