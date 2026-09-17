@@ -5,6 +5,8 @@ import { queryRoutes } from "../src/routes/query.js";
 import { streamRoutes } from "../src/routes/stream.js";
 import { authRoutes } from "../src/routes/auth.js";
 import { shareRoutes } from "../src/routes/share.js";
+import { profileRoutes } from "../src/routes/profile.js";
+import { orgRoutes } from "../src/routes/orgs.js";
 import { setEnv, type Env } from "../src/config/env.js";
 import { setQueryCache, QueryCache } from "../src/services/cache.js";
 import { setCircuitBreaker, CircuitBreaker } from "../src/services/circuitBreaker.js";
@@ -31,6 +33,8 @@ function buildTestApp(): FastifyInstance {
   void app.register(streamRoutes);
   void app.register(authRoutes);
   void app.register(shareRoutes);
+  void app.register(profileRoutes);
+  void app.register(orgRoutes);
   return app;
 }
 
@@ -116,6 +120,14 @@ vi.mock("../src/db/users.js", async (importOriginal) => {
     })),
     listShareLinks: vi.fn(async () => []),
     revokeShareLink: vi.fn(async () => true),
+    getShareLink: vi.fn(async () => null),
+    searchUsers: vi.fn(async (query: string) =>
+      query.startsWith("te")
+        ? [{ id: "usr_2", email: "teammate@company.com", display_name: "Teammate" }]
+        : []
+    ),
+    listSharesCreatedBy: vi.fn(async () => []),
+    listSharesForEmail: vi.fn(async () => []),
   };
 });
 
@@ -458,6 +470,65 @@ describe("API routes (app.inject)", () => {
       const body = me.json() as { user: { id: string; tenantId: string } };
       expect(body.user.id).toBe("usr_test123");
       expect(body.user.tenantId).toBe("t_test123");
+    });
+
+    it("GET /api/users/search returns safe fields for prefix matches", async () => {
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      const hit = await app.inject({
+        method: "GET",
+        url: "/api/users/search?q=te",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(hit.statusCode).toBe(200);
+      const body = hit.json() as { users: Array<{ email: string; displayName: string | null }> };
+      expect(body.users).toHaveLength(1);
+      expect(body.users[0]?.email).toBe("teammate@company.com");
+      // Safe fields only — never password hashes.
+      expect(JSON.stringify(body.users)).not.toContain("password");
+
+      const miss = await app.inject({
+        method: "GET",
+        url: "/api/users/search?q=zz",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect((miss.json() as { users: unknown[] }).users).toHaveLength(0);
+
+      // Too-short queries return an empty list without touching the DB.
+      const tiny = await app.inject({
+        method: "GET",
+        url: "/api/users/search?q=t",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(tiny.statusCode).toBe(200);
+      expect((tiny.json() as { users: unknown[] }).users).toHaveLength(0);
+    });
+
+    it("GET /api/users/search requires auth", async () => {
+      const noAuth = await app.inject({ method: "GET", url: "/api/users/search?q=te" });
+      expect(noAuth.statusCode).toBe(401);
+    });
+
+    it("POST /api/share/:id/access-token accepts a body-less POST (no JSON content-type)", async () => {
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      // No payload AND no content-type — the exact request the fixed client sends.
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/share/shr_test123/access-token",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      // 404 (link missing in mock) — NOT 400. The old bug returned 400 because
+      // the client declared a JSON content-type on an empty body.
+      expect(response.statusCode).toBe(404);
     });
 
     it("GET /api/auth/me rejects missing/invalid tokens with 401", async () => {

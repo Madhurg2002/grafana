@@ -150,10 +150,13 @@ export function setToken(token: string | null): void {
 
 async function authedJson<T>(path: string, init: RequestInit = {}, extraHeaders: Record<string, string> = {}): Promise<T> {
   const token = getToken();
+  // Only send a JSON content-type when there is a body — Fastify 400s a
+  // body-less POST that declares application/json (breaks access-token).
+  const hasBody = init.body !== undefined && init.body !== null;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      "content-type": "application/json",
+      ...(hasBody ? { "content-type": "application/json" } : {}),
       ...(token !== null ? { authorization: `Bearer ${token}` } : {}),
       ...extraHeaders,
       ...init.headers,
@@ -307,6 +310,13 @@ export function fetchShareAccessToken(id: string): Promise<{ token: string; emai
     `/api/share/${encodeURIComponent(id)}/access-token`,
     { method: "POST" }
   );
+}
+
+/** People picker for the share dialog — email or display-name prefix. */
+export function searchUsers(query: string): Promise<
+  Array<{ id: string; email: string; displayName: string | null }>
+> {
+  return authedJson(`/api/users/search?q=${encodeURIComponent(query)}`);
 }
 
 // ---------------------------------------------------------------------------
