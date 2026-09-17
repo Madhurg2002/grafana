@@ -39,6 +39,8 @@ interface Props {
   tenantId: string;
   /** True when the page should use the wide (Grafana-style) layout. */
   wide?: boolean;
+  /** Notifies the parent which page is active (for built-ins visibility). */
+  onActivePageChange?: (page: DashboardPage | null) => void;
 }
 
 const WINDOW_OPTIONS = [
@@ -197,10 +199,11 @@ function formatValue(value: number): string {
  * widgets (stat / gauge / sparkline / hosts table) with per-widget grid span
  * and drag-to-reorder. Everything persists server-side.
  */
-export function CustomPanels({ tenantId, wide = false }: Props): JSX.Element | null {
+export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Props): JSX.Element | null {
   const [pages, setPages] = useState<DashboardPage[]>([]);
   const [activePageId, setActivePageId] = useState<number | null>(null);
   const [newPageName, setNewPageName] = useState("");
+  const [newPageWithBuiltins, setNewPageWithBuiltins] = useState(true);
   const [addingPage, setAddingPage] = useState(false);
   const [widgets, setWidgets] = useState<PageWidget[]>([]);
   const [browserOpen, setBrowserOpen] = useState(false);
@@ -219,6 +222,11 @@ export function CustomPanels({ tenantId, wide = false }: Props): JSX.Element | n
   const refreshTimerRef = useRef<number | null>(null);
 
   const activePage = pages.find((p) => p.id === activePageId) ?? pages[0] ?? null;
+
+  // Tell the parent which page is active so it can show/hide the built-in strip.
+  useEffect(() => {
+    onActivePageChange?.(activePage);
+  }, [activePage, onActivePageChange]);
 
   // Pages load first (auto-provisioning "Home" server-side on first read).
   useEffect(() => {
@@ -280,10 +288,11 @@ export function CustomPanels({ tenantId, wide = false }: Props): JSX.Element | n
     setBusy(true);
     setError(null);
     try {
-      const { page } = await createPage(tenantId, name);
+      const { page } = await createPage(tenantId, name, newPageWithBuiltins);
       setPages((prev) => [...prev, page]);
       setActivePageId(page.id);
       setNewPageName("");
+      setNewPageWithBuiltins(true);
       setAddingPage(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create page");
@@ -345,7 +354,11 @@ export function CustomPanels({ tenantId, wide = false }: Props): JSX.Element | n
     }
   }
 
-  async function handlePageSetting(patch: { refreshSeconds?: number; windowMinutes?: number }): Promise<void> {
+  async function handlePageSetting(patch: {
+    refreshSeconds?: number;
+    windowMinutes?: number;
+    showBuiltins?: boolean;
+  }): Promise<void> {
     if (activePage === null) return;
     setBusy(true);
     setError(null);
@@ -532,9 +545,22 @@ export function CustomPanels({ tenantId, wide = false }: Props): JSX.Element | n
                   if (e.key === "Escape") setAddingPage(false);
                 }}
                 placeholder="Page name"
+                title="Page name — letters, digits, spaces, - and _"
                 maxLength={64}
                 className="w-28 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
               />
+              <label
+                className="flex cursor-pointer items-center gap-1 text-[10px] text-zinc-500"
+                title="Show the fixed built-in essentials (Hosts Up, CPU, RAM, Network) above this page's own widgets"
+              >
+                <input
+                  type="checkbox"
+                  checked={newPageWithBuiltins}
+                  onChange={(e) => setNewPageWithBuiltins(e.target.checked)}
+                  className="h-3 w-3 accent-emerald-500"
+                />
+                built-ins
+              </label>
               <button
                 type="button"
                 aria-label="Create page"
@@ -668,6 +694,28 @@ export function CustomPanels({ tenantId, wide = false }: Props): JSX.Element | n
                 Add widget
               </button>
             ) : null}
+            <button
+              type="button"
+              data-testid="toggle-builtins"
+              title={
+                activePage?.show_builtins === false
+                  ? "Built-in essentials are hidden on this page — click to show them"
+                  : "Built-in essentials (Hosts Up, CPU, RAM, Network) show above this page — click to hide them"
+              }
+              disabled={busy}
+              className={`rounded-lg border px-2 py-1 text-[11px] transition ${
+                activePage?.show_builtins === false
+                  ? "border-zinc-800 text-zinc-500 hover:border-emerald-500/40 hover:text-emerald-300"
+                  : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+              }`}
+              onClick={() => {
+                if (activePage !== null) {
+                  void handlePageSetting({ showBuiltins: !(activePage.show_builtins ?? true) });
+                }
+              }}
+            >
+              {activePage?.show_builtins === false ? "Built-ins: off" : "Built-ins: on"}
+            </button>
           </div>
         ) : null}
       </div>
