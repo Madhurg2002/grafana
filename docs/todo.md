@@ -11,8 +11,6 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
-| Item | Why it matters | When / trigger |
-| :--- | :--- | :--- |
 | Apply migrations 008–013 on the production DB | Pre-deploy command (`npm run db:migrate`) is wired in `render.yaml` (PR #9) — 008 orgs, 009 page_widgets, 010 per-page built-ins, 011 alerts, 012 user-search indexes, and 013 multi-share-links apply automatically at the next production deploy. Verify orgs/pages/alerts/multi-links right after it. | At the next deploy — verify, then remove this row |
 
 ## 🟠 Soon — hardening while the app is in real use
