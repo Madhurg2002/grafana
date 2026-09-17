@@ -138,9 +138,17 @@ async function authedJson<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init.headers,
     },
   });
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
+  const payload = (await response.json().catch(() => ({}))) as T & {
+    error?: string;
+    details?: Array<{ path: string; message: string }>;
+  };
   if (!response.ok) {
-    throw new Error(payload.error ?? `Request failed with ${response.status}`);
+    // Surface zod field-level detail so "Invalid request body" is diagnosable.
+    const detail =
+      payload.details !== undefined && payload.details.length > 0
+        ? payload.details.map((d) => `${d.path || "body"}: ${d.message}`).join("; ")
+        : "";
+    throw new Error(detail.length > 0 ? `${payload.error ?? "Request failed"} — ${detail}` : payload.error ?? `Request failed with ${response.status}`);
   }
   return payload;
 }
@@ -217,6 +225,33 @@ export function fetchShareView(id: string, viewToken?: string): Promise<ShareVie
   return authedJson<ShareViewPayload>(
     `/api/share/${encodeURIComponent(id)}/view`,
     viewToken !== undefined ? { headers: { authorization: `Bearer ${viewToken}` } } : {}
+  );
+}
+
+export function revokeShareLink(id: string): Promise<{ revoked: boolean }> {
+  return authedJson<{ revoked: boolean }>(
+    `/api/share/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+}
+
+export interface ProfileShare {
+  id: string;
+  url: string;
+  label: string;
+  createdAt: string;
+  access: ShareAccess;
+  revoked: boolean;
+  allowedEmails: string[];
+  invitedEmails: string[];
+}
+
+export function fetchProfileShares(): Promise<{
+  created: ProfileShare[];
+  sharedWithMe: ProfileShare[];
+}> {
+  return authedJson<{ created: ProfileShare[]; sharedWithMe: ProfileShare[] }>(
+    "/api/profile/shares"
   );
 }
 

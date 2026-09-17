@@ -176,9 +176,11 @@ describe("DashboardView", () => {
     );
   }
 
-  it("renders the header with tenant and health badge", async () => {
+  it("renders the header with connection label and health badge (no internal tenant IDs)", async () => {
     renderDashboard("team-9");
-    expect(screen.getByText(/tenant: team-9/i)).toBeInTheDocument();
+    // Internal tenant IDs are never rendered in the UI.
+    expect(screen.queryByText(/tenant: team-9/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("team-9")).not.toBeInTheDocument();
     expect(screen.getByTestId("health-badge")).toBeInTheDocument();
   });
 

@@ -13,6 +13,8 @@ export interface SparkLineCardProps {
   unit?: string;
   series: MetricSeries[];
   stroke: string;
+  /** The PromQL behind this card — surfaced as a hover formula tooltip. */
+  query?: string;
 }
 
 function formatBytes(value: number): string {
@@ -27,6 +29,7 @@ export function SparkLineCard({
   unit,
   series,
   stroke,
+  query,
 }: SparkLineCardProps): JSX.Element {
   const points = series.flatMap((s) =>
     s.points.map((p) => ({ timestamp: p.timestamp, value: p.value }))
@@ -42,7 +45,12 @@ export function SparkLineCard({
       data-testid="sparkline-card"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wider text-zinc-400">{title}</span>
+        <span
+          className="truncate text-xs uppercase tracking-wider text-zinc-400"
+          title={query !== undefined ? `${title} — ${query}` : title}
+        >
+          {title}
+        </span>
         <span className="text-sm font-medium tabular-nums text-zinc-200">
           {unit === "bytes/s" ? formatBytes(latest) : latest.toFixed(2)}
         </span>

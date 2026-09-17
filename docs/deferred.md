@@ -39,6 +39,12 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Friendly connect/auth error copy + demo-Prometheus fallback button | ✅ | Verified working public demo: `https://prometheus.demo.prometheus.io` (the old `prometheus.demo.do.prometheus.io` no longer resolves — do not suggest it). |
 | Per-host drill-down pages | 🔶 | Hosts table now on the live dashboard (matches the share view); click-to-filter gauges/sparklines still deferred. |
 | Dashboard refresh controls (manual refresh, window picker) | ⏳ | Instant metrics poll every 15s, sparklines fetched once per mount; no user-facing refresh/window controls. |
+| Single header chrome | ✅ | `SignedInApp` renders the ONLY header; `DashboardView embedded` renders a slim toolbar (switcher + health + share) beneath it — no duplicate branding row. |
+| Internal tenant IDs hidden from UI | ✅ | The `tenant: t_…` line is gone; users see connection labels/emails only (`parseRoute`-level surfaces never render IDs). |
+| Dashboard pages (Home + custom pages) | ✅ | Migration 007 `dashboard_pages`; tabs in `CustomPanels` (add/delete pages, panels scoped via `pageId`, `GET /api/pages/:tenantId` auto-provisions Home). |
+| Per-user grid density | ✅ | Auto/1/2/3 selector in `CustomPanels`, persisted per user in localStorage (not per view); auto = screen-responsive (`2xl:grid-cols-3`). |
+| Profile page (share inventory) | ✅ | `/profile` + `GET /api/profile/shares`: links I created (copy/revoke, revoked kept visible + marked), links shared with my email (open/revoked). |
+| Formula transparency | ✅ | Hosts-table `query:` line + hover tooltips on every built-in and custom card expose the exact PromQL powering it. |
 | Alerting (threshold → email/Slack) | ⏳ | The biggest Grafana-parity gap; needs an alerts table + notifier service + UI. |
 | Custom queries / panel builder | ✅ | `CustomPanels` UI: titled PromQL panels (sparkline/gauge/stat) persisted in `dashboard_panels`, normalized server-side, rendered live. Editing = delete + recreate. |
 | PromQL helper (autocomplete + recipes) | ✅ | `GET /api/metrics/:tenantId` (cached metric catalog), `GET /api/labels/:tenantId/:label`, tenant-aware recipes (`/api/promql/recipes/:tenantId` flags what the upstream lacks + auto-generates rate() panels for its own `_total` counters); `PromqlHelper` suggests metrics/instances from the CONNECTED upstream. |
@@ -46,11 +52,15 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Rearrangeable dashboard | ✅ | Custom panels are drag-to-reorder (HTML5 DnD) with positions persisted via `POST /api/panels/:tenantId/:id/reorder` (transactional batch update); grid scales to `2xl:grid-cols-3` for large screens. |
 | Prometheus/Grafana toggle in connect UI | ✅ | Auto/Prometheus/Grafana segmented control; label copy + token requirements adapt per flavor (`upstreamType` override hits the backend's existing mismatch check). |
 | Share view = live dashboard parity | ✅ | Share snapshots now include network RX/TX series (same 60m/5m window); live dashboard now includes the hosts table. |
-| Multiple dashboards / saved views per user | 🔶 | Custom panels per tenant ship; multiple *named dashboards* (groups of panels) still deferred. |
+| Multiple dashboards / saved views per user | ✅ | Superseded by Dashboard pages (migration 007): Home + named pages, each an ordered panel group. |
 | Multiple upstream URIs per tenant + switcher | ✅ | Migration 005 (multi-row `prometheus_connections`, partial unique active index); header `ConnectionSwitcher` lists/activates/deletes without re-entering credentials. |
 | Log/trace correlation, non-Prometheus datasources | ⏳ | Out of scope by design (Prometheus-only per spec). |
 
 ## Environment / Ops
+
+| Item | Status | Notes |
+| :--- | :--- | :--- |
+| Invite emails (Resend) | ⏳ Deferred until prod-ready | Plumbing exists (`services/email.ts`, `POST /api/share/:id/invite`); sharing falls back to copy-link while `RESEND_API_KEY` is unset. Activation deliberately postponed — non-prod app must not send mail. |
 
 | Item | Status | Notes |
 | :--- | :--- | :--- |
@@ -70,7 +80,8 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 ## DB initializer quick reference
 
 ```bash
-npm run db:init        # apply pending migrations (idempotent, advisory-locked)
+npm run db:migrate     # apply pending migrations, then exit (release step)
+npm run db:init        # legacy alias, same runner (idempotent, advisory-locked)
 ```
 
 - Migrations live in `backend/src/db/migrations/index.ts` — **never edit an applied migration** (checksum verification aborts boot); append `005_*.ts`-style entries instead.
