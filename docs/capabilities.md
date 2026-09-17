@@ -12,9 +12,9 @@
 | Multiple stored URIs per user + one-click switch (no re-auth) — add/switch/delete opens as a centered modal with per-field guidance | `ConnectionSwitcher.tsx`, `/api/connections/:tenantId*` |
 | PromQL proxy: instant/range, normalizer, 300s LRU cache, circuit breaker | `backend/src/services/prometheus.ts`, `cache.ts`, `circuitBreaker.ts` |
 | Live updates: single-poll SSE fan-out (1 query / 5s / tenant) | `backend/src/services/sse.ts`, `/api/stream` |
-| Built-in dashboard: hosts up, CPU/RAM gauges, network sparklines | `frontend/src/components/DashboardView.tsx` |
+| Built-in dashboard: hosts up, CPU/RAM gauges, network sparklines — optional per page (`dashboard_pages.show_builtins`, default on) | `frontend/src/components/DashboardView.tsx` |
 | Custom views: widgets (stat/gauge/sparkline/hosts-table), per-widget span, in-place edit, drag-reorder, persisted — every form field carries a visible hint + tooltip | `CustomPanels.tsx`, `/api/pages/:tenantId/:pageId/widgets*` |
-| Dashboard PAGES: user-modifiable dashboards — rename, pick home, per-page refresh/window | migrations 007+009, `/api/pages/:tenantId*`, page tabs in `CustomPanels` |
+| Dashboard PAGES: user-modifiable dashboards — rename, pick home, per-page refresh/window, optional built-in essentials strip (checkbox at page creation, "Built-ins: on/off" toggle per page) | migrations 007+009+010, `/api/pages/:tenantId*`, page tabs in `CustomPanels`, `DashboardView` honors `show_builtins` |
 | PromQL helper: recipes filtered by upstream, metric catalog, label values, series browser, predictive autocomplete — full helper opens as a centered modal; inline suggestions are width/height-capped and scroll internally (never overflow the card) | `PromqlHelper.tsx`, `MetricBrowser.tsx`, `/api/metrics\|labels\|promql/*` |
 | Formula transparency: every card/table exposes the query behind it (hover tooltip / `query:` line) | `SparkLineCard`, `GaugeCard`, hosts-table widget |
 | Share links: audience (anyone-link / email allow-list / org members) × right (view/edit), revoke, public snapshot view | `backend/src/routes/share.ts`, `ShareDialog.tsx`, `ShareView.tsx` |

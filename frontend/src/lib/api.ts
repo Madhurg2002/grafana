@@ -409,6 +409,8 @@ export interface DashboardPage {
   default_span?: number;
   refresh_seconds?: number;
   window_minutes?: number;
+  /** Whether the fixed built-in essentials strip renders above this page's widgets. */
+  show_builtins?: boolean;
 }
 
 export function listPages(
@@ -422,10 +424,14 @@ export function listPages(
   );
 }
 
-export function createPage(tenantId: string, name: string): Promise<{ page: DashboardPage }> {
+export function createPage(
+  tenantId: string,
+  name: string,
+  showBuiltins = true
+): Promise<{ page: DashboardPage }> {
   return authedJson<{ page: DashboardPage }>(
     `/api/pages/${encodeURIComponent(tenantId)}`,
-    { method: "POST", body: JSON.stringify({ name }) }
+    { method: "POST", body: JSON.stringify({ name, showBuiltins }) }
   );
 }
 
@@ -624,7 +630,12 @@ export function makePageHome(
 export function updatePageSettings(
   tenantId: string,
   pageId: number,
-  settings: { defaultSpan?: number; refreshSeconds?: number; windowMinutes?: number },
+  settings: {
+    defaultSpan?: number;
+    refreshSeconds?: number;
+    windowMinutes?: number;
+    showBuiltins?: boolean;
+  },
   tenantToken?: string | null
 ): Promise<{ ok: boolean }> {
   return authedJson<{ ok: boolean }>(
