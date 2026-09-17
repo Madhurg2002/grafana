@@ -8,7 +8,7 @@
 | :--- | :--- |
 | Accounts: signup/login/me (scrypt + HMAC sessions) | `backend/src/routes/auth.ts`, `frontend/src/hooks/useAuth.tsx` — every interactive control across the app carries a `title` tooltip explaining its effect |
 | Account settings: password change + display name | `POST /api/auth/change-password`, `PATCH /api/auth/profile`, Profile → Account |
-| Connect flow: URI + optional token → detect (Prometheus **or** Grafana) → encrypt → persist | `backend/src/routes/connect.ts`, `backend/src/services/upstream.ts`, `frontend/src/components/ConnectForm.tsx` |
+| Connect flow: URI + optional token → detect (Prometheus **or** Grafana) → encrypt → persist — accepts any paste: `https://…`, bare `ip:port` (http), scheme-less public hostnames (https inferred, http fallback probe), private ranges/internal TLDs stay http; Grafana UI links truncate to the mount prefix | `backend/src/routes/connect.ts`, `backend/src/services/upstream.ts`, `frontend/src/components/ConnectForm.tsx` |
 | Multiple stored URIs per user + one-click switch (no re-auth) — add/switch/delete opens as a centered modal with per-field guidance | `ConnectionSwitcher.tsx`, `/api/connections/:tenantId*` |
 | PromQL proxy: instant/range, normalizer, 300s LRU cache, circuit breaker | `backend/src/services/prometheus.ts`, `cache.ts`, `circuitBreaker.ts` |
 | Live updates: single-poll SSE fan-out (1 query / 5s / tenant) | `backend/src/services/sse.ts`, `/api/stream` |
@@ -27,3 +27,4 @@
 | Per-widget grid span (1–3) + responsive wide layout | `CustomPanels.tsx` span controls, `PATCH /api/pages/:tenantId/widgets/:id` |
 | Invite emails via Brevo | `backend/src/services/email.ts` — OPTIONAL, disabled until `BREVO_API_KEY` + `BREVO_FROM_EMAIL` are set (see `docs/todo.md`) |
 | Live-upstream integration tests (gated) | `backend/tests/live-upstream.test.ts` — `TEST_PROMETHEUS_URL` + DB required, skips otherwise |
+| Operator scripts: `npm run verify` (typecheck + all tests), `npm run db:migrate:status` (applied/pending/MODIFIED), `npm run capability-review` (maps changed files → touched capabilities for the auto-review rule), `npm run rotate` (key-rotation rewrap), `npm run smoke:live` (end-to-end against a real Prometheus incl. scheme-less connect) | root `package.json`, `scripts/capability-review.sh`, `scripts/smoke-live.sh`, `backend/src/db/migrateStatus.ts`, `backend/src/scripts/rotateEncryptionKey.ts` |

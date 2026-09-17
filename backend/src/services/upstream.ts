@@ -10,6 +10,9 @@ export type UpstreamType = "prometheus" | "grafana";
 
 const SCHEME_RE = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
 
+/** Port that only makes sense for plain HTTP — used to decide https inference. */
+const PLAIN_HTTP_PORTS = new Set(["", "80", "8080", "9090", "3000", "8000"]);
+
 /**
  * Grafana UI path segments — when a user pastes a dashboard/explore link we
  * cut back to the mount prefix so the API lives at <prefix>/api/...
@@ -41,6 +44,12 @@ export interface NormalizedUpstreamInput {
 /**
  * Accepts everything users actually paste:
  *  - bare `10.0.0.5:9090` or `prometheus.internal:9090` → http:// prefixed
+ *  - bare `prometheus.demo.prometheus.io` (no port/scheme) → https:// when the
+ *    host is not loopback/private and carries no plain-HTTP port — public
+ *    hosts virtually always serve TLS, and the detector still falls back to
+ *    http:// if the https probe fails
+ *  - `demo.prometheus.io/` or `https://demo.prometheus.io:9090/` → scheme,
+ *    port and trailing slash all honored
  *  - Grafana dashboard links `https://host/monitor/d/<uid>/slug?orgId=1`
  *    → truncated to `https://host/monitor`
  *  - trailing slashes / query strings / fragments → stripped
@@ -48,7 +57,11 @@ export interface NormalizedUpstreamInput {
 export function normalizeUpstreamInput(rawInput: string): NormalizedUpstreamInput {
   const candidate = rawInput.trim().replace(/\s+/g, "");
   const addedScheme = !SCHEME_RE.test(candidate);
-  const withScheme = addedScheme ? `http://${candidate}` : candidate;
+  const inferredHttps =
+    addedScheme &&
+    shouldInferHttps(candidate);
+  const prefix = addedScheme ? (inferredHttps ? "https://" : "http://") : "";
+  const withScheme = `${prefix}${candidate}`;
   let parsed: URL;
   try {
     parsed = new URL(withScheme);
@@ -63,6 +76,38 @@ export function normalizeUpstreamInput(rawInput: string): NormalizedUpstreamInpu
   const kept = uiIndex >= 0 ? segments.slice(0, uiIndex) : segments;
   const base = `${parsed.protocol}//${parsed.host}${kept.length > 0 ? `/${kept.join("/")}` : ""}`;
   return { base, addedScheme, strippedUiPath: uiIndex >= 0 || hadTail };
+}
+
+/**
+ * Heuristic for scheme-less pastes: loopback, *.local, private-range hosts
+ * and explicit plain-HTTP ports stay http://; anything else (a public
+ * hostname like prometheus.demo.prometheus.io) infers https://.
+ */
+function shouldInferHttps(candidate: string): boolean {
+  if (PLAIN_HTTP_PORTS.has("") === false) {
+    // Extract an explicit port if present (the last :segment after the host).
+    const hostPart = candidate.split("/")[0] ?? candidate;
+    const portMatch = /:(\d{1,5})$/.exec(hostPart);
+    if (portMatch !== null && !PLAIN_HTTP_PORTS.has(portMatch[1] ?? "")) {
+      return true; // e.g. :8443 — almost certainly TLS
+    }
+  }
+  const host = candidate.split("/")[0]?.split(":")[0] ?? candidate;
+  if (/^(localhost|127\.|\[::1\]|0\.0\.0\.0|::1)$/i.test(host)) {
+    return false;
+  }
+  if (/\.(local|internal|lan|corp|home|intranet)$/i.test(host)) {
+    return false;
+  }
+  // RFC1918 / link-local / container ranges.
+  if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|172\.17\.)/.test(host)) {
+    return false;
+  }
+  // Bare IPv4 without a port: likely an internal node — try http first.
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    return false;
+  }
+  return true; // public hostname with no port → TLS is the norm
 }
 
 export interface DetectionResult {
@@ -110,12 +155,45 @@ export async function detectUpstream(
 ): Promise<DetectionResult> {
   const probe = options.probe ?? DEFAULT_PROBE;
   const normalized = normalizeUpstreamInput(rawUrl);
-  const base = normalized.base;
   const headers: Record<string, string> = { accept: "application/json" };
   if (options.authToken !== undefined && options.authToken.length > 0) {
     headers.authorization = `Bearer ${options.authToken}`;
   }
 
+  // Scheme-less pastes get TWO candidate bases (https first, then http) so a
+  // wrong inference never blocks the connection — the first base that
+  // answers wins. Explicit-scheme pastes keep their single base.
+  const candidateBases = normalized.addedScheme
+    ? Array.from(
+        new Set([
+          normalized.base,
+          normalized.base.startsWith("https://")
+            ? `http://${normalized.base.slice("https://".length)}`
+            : `https://${normalized.base.slice("http://".length)}`,
+        ])
+      )
+    : [normalized.base];
+
+  let lastProbeError: unknown = null;
+  for (const base of candidateBases) {
+    const detected = await detectOnBase(base, headers, probe, normalized.base);
+    if (detected !== null) {
+      return detected;
+    }
+  }
+  throw new Error(
+    `URL is neither a reachable Prometheus nor a Grafana instance (probed ${candidateBases.join(", ")})${
+      lastProbeError instanceof Error ? ` — ${lastProbeError.message}` : ""
+    } — check the URL/token and try again`
+  );
+
+  /** Probes one candidate base for Prometheus-ness, then Grafana-ness. */
+  async function detectOnBase(
+    base: string,
+    headers: Record<string, string>,
+    probe: ProbeFn,
+    originalBase: string
+  ): Promise<DetectionResult | null> {
   // 1) Direct Prometheus probe — the cheapest signal.
   try {
     const prom = await probe(
@@ -127,10 +205,14 @@ export async function detectUpstream(
       return {
         type: "prometheus",
         queryBaseUrl: base,
-        detail: "Direct Prometheus connection",
+        detail:
+          base === originalBase
+            ? "Direct Prometheus connection"
+            : `Direct Prometheus connection (inferred ${new URL(base).protocol.replace(":", "")})`,
       };
     }
-  } catch {
+  } catch (error) {
+    lastProbeError = error;
     // Not (reachable as) Prometheus — try Grafana below.
   }
 
@@ -174,7 +256,6 @@ export async function detectUpstream(
     );
   }
 
-  throw new Error(
-    `URL is neither a reachable Prometheus nor a Grafana instance (probed ${base}) — check the URL/token and try again`
-  );
+  return null; // this base answered as neither Prometheus nor Grafana
+  }
 }

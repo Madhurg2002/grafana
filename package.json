@@ -20,6 +20,9 @@
     "test": "npm run test --workspace backend && npm run test --workspace frontend",
     "test:backend": "npm run test --workspace backend",
     "test:frontend": "npm run test --workspace frontend",
-    "typecheck": "npm run typecheck --workspace backend && npm run typecheck --workspace frontend"
+    "typecheck": "npm run typecheck --workspace backend && npm run typecheck --workspace frontend",
+    "verify": "npm run typecheck && npm test",
+    "capability-review": "sh ./scripts/capability-review.sh",
+    "smoke:live": "sh ./scripts/smoke-live.sh"
   }
 }

@@ -162,13 +162,27 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
   useEffect(() => {
     registerTrigger?.(updateAnchor);
     registerKeyDown?.(handleKeyDown);
+    // Re-clamp on window resize/scroll so the list never drifts out of
+    // bounds while open.
+    const reflow = (): void => {
+      if (anchor !== null) {
+        updateAnchor();
+      }
+    };
+    window.addEventListener("resize", reflow);
+    window.addEventListener("scroll", reflow, true);
     return () => {
       registerTrigger?.(() => undefined);
       registerKeyDown?.(() => undefined);
+      window.removeEventListener("resize", reflow);
+      window.removeEventListener("scroll", reflow, true);
     };
   });
 
-  /** Compute the floating overlay position from the caret (end-of-input). */
+  /** Compute the floating overlay position from the caret (end-of-input).
+   *  Clamped to the viewport: flips above the textarea when there is no
+   *  room below, and pulls left when the textarea hugs the right edge —
+   *  the list can never leave the visible area. */
   function updateAnchor(): void {
     const el = inputRef?.current;
     if (el === null || el === undefined) {
@@ -176,7 +190,19 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
       return;
     }
     const rect = el.getBoundingClientRect();
-    setAnchor({ top: rect.bottom + 4, left: rect.left });
+    const LIST_WIDTH = 320; // w-80
+    const LIST_MAX_HEIGHT = 224; // max-h-56
+    const margin = 8;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top =
+      spaceBelow >= LIST_MAX_HEIGHT + margin
+        ? rect.bottom + 4
+        : Math.max(margin, rect.top - LIST_MAX_HEIGHT - 4);
+    const left = Math.max(
+      margin,
+      Math.min(rect.left, window.innerWidth - LIST_WIDTH - margin)
+    );
+    setAnchor({ top, left });
   }
 
   function applySuggestion(text: string): void {
