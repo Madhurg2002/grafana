@@ -1,8 +1,5 @@
 prometheus-passthrough/
 ├── .cursorrules                        # Context & rules for AI IDE extensions
-├── .github/workflows/                  # GitHub deployment checks
-│   ├── render-deploy.yml               # Render deployment check
-│   └── vercel-deploy.yml               # Vercel deployment check
 ├── .env.example                        # Environment variable template
 ├── .gitignore                          # Git ignore rules
 ├── AGENTS.md                           # Strict guidelines & coding standards for AI agents
