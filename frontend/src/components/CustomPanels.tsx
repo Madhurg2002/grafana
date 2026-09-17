@@ -116,10 +116,12 @@ function LiveWidget({
   widget,
   index,
   selectedHost,
+  windowMinutes,
 }: {
   widget: WidgetWithHost;
   index: number;
   selectedHost: string | null;
+  windowMinutes: number;
 }): JSX.Element {
   const stroke = PALETTE[index % PALETTE.length];
   // Escapes a label value for safe inclusion inside PromQL double quotes.
@@ -134,8 +136,8 @@ function LiveWidget({
         : widget.promql.includes("{")
           ? widget.promql.replace(/\{/, `{instance="${scoped}",`)
           : `${widget.promql}{instance="${scoped}"}`;
-  const instant = useInstantMetric(widget.tenant_id, query);
-  const range = useRangeMetric(widget.tenant_id, query);
+  const instant = useInstantMetric(widget.tenant_id, query, 60, widget.kind !== "sparkline" && widget.kind !== "hosts_table");
+  const range = useRangeMetric(widget.tenant_id, query, windowMinutes, "5m", widget.kind === "sparkline");
 
   if (widget.kind === "sparkline") {
     return (
@@ -473,11 +475,23 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
     if (activePage === null) return;
     setBusy(true);
     setError(null);
+    const previousPage = activePage;
+    setPages((current) =>
+      current.map((page) =>
+        page.id === previousPage.id
+          ? {
+              ...page,
+              ...(patch.refreshSeconds !== undefined ? { refresh_seconds: patch.refreshSeconds } : {}),
+              ...(patch.windowMinutes !== undefined ? { window_minutes: patch.windowMinutes } : {}),
+              ...(patch.showBuiltins !== undefined ? { show_builtins: patch.showBuiltins } : {}),
+            }
+          : page
+      )
+    );
     try {
       await updatePageSettings(tenantId, activePage.id, patch);
-      const payload = await listPages(tenantId);
-      setPages([...payload.pages].sort((a, b) => a.position - b.position));
     } catch (err) {
+      setPages((current) => current.map((page) => page.id === previousPage.id ? previousPage : page));
       setError(err instanceof Error ? err.message : "Failed to update page settings");
     } finally {
       setBusy(false);
@@ -1087,6 +1101,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               widget={{ ...widget, onSelectHost: setSelectedHost } as WidgetWithHost}
               index={index}
               selectedHost={selectedHost}
+              windowMinutes={activePage.window_minutes ?? 60}
             />
             <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
               <button

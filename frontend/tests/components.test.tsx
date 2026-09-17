@@ -12,6 +12,7 @@ import {
 import { ConnectForm } from "../src/components/ConnectForm";
 import { DashboardView } from "../src/components/DashboardView";
 import { AuthProvider } from "../src/hooks/useAuth";
+import { instantQuery } from "../src/lib/api";
 import type { MetricSeries } from "../src/hooks/types";
 
 // jsdom lacks EventSource — stub it.
@@ -131,6 +132,25 @@ describe("SparkLineCard", () => {
   it("formats tooltip values without raw floating-point noise", () => {
     expect(formatMetricValue(50.73333333333333)).toBe("50.73");
     expect(formatMetricValue(1333.333, "bytes/s")).toBe("1.3 KB/s");
+  });
+});
+
+describe("query request coalescing", () => {
+  it("shares one network request for identical concurrent instant queries", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ resultType: "vector", result: [], cached: false, query: "up" }),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await Promise.all([
+      instantQuery({ tenantId: "dedupe-test", query: "up" }),
+      instantQuery({ tenantId: "dedupe-test", query: "up" }),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

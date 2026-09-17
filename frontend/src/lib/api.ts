@@ -103,11 +103,125 @@ export function fetchConnectionInfo(tenantId: string): Promise<ConnectionInfo> {
 }
 
 export function instantQuery(request: QueryRequest): Promise<QueryResponseBody> {
-  return postJson<QueryResponseBody>("/api/query", request);
+  return deduplicatedQuery("instant", request, () =>
+    enqueueBatch("instant", request)
+  );
 }
 
 export function rangeQuery(request: QueryRangeRequest): Promise<QueryResponseBody> {
-  return postJson<QueryResponseBody>("/api/query_range", request);
+  return deduplicatedQuery("range", request, () =>
+    enqueueBatch("range", request)
+  );
+}
+
+const QUERY_DEDUPE_TTL_MS = 3_000;
+const queryResponseCache = new Map<string, { expiresAt: number; value: QueryResponseBody }>();
+const queryInFlight = new Map<string, Promise<QueryResponseBody>>();
+
+interface PendingBatch<T extends QueryRequest | QueryRangeRequest> {
+  request: T;
+  resolve: (value: QueryResponseBody) => void;
+  reject: (error: unknown) => void;
+}
+
+const instantBatchQueue: Array<PendingBatch<QueryRequest>> = [];
+const rangeBatchQueue: Array<PendingBatch<QueryRangeRequest>> = [];
+let instantBatchTimer: number | null = null;
+let rangeBatchTimer: number | null = null;
+
+function enqueueBatch(
+  kind: "instant",
+  request: QueryRequest
+): Promise<QueryResponseBody>;
+function enqueueBatch(
+  kind: "range",
+  request: QueryRangeRequest
+): Promise<QueryResponseBody>;
+function enqueueBatch(
+  kind: "instant" | "range",
+  request: QueryRequest | QueryRangeRequest
+): Promise<QueryResponseBody> {
+  return new Promise<QueryResponseBody>((resolve, reject) => {
+    if (kind === "instant") {
+      instantBatchQueue.push({ request: request as QueryRequest, resolve, reject });
+      if (instantBatchTimer === null) {
+        instantBatchTimer = window.setTimeout(() => {
+          instantBatchTimer = null;
+          void flushBatch("instant");
+        }, 0);
+      }
+    } else {
+      rangeBatchQueue.push({ request: request as QueryRangeRequest, resolve, reject });
+      if (rangeBatchTimer === null) {
+        rangeBatchTimer = window.setTimeout(() => {
+          rangeBatchTimer = null;
+          void flushBatch("range");
+        }, 0);
+      }
+    }
+  });
+}
+
+async function flushBatch(kind: "instant" | "range"): Promise<void> {
+  const queue = kind === "instant" ? instantBatchQueue : rangeBatchQueue;
+  const pending = queue.splice(0, queue.length);
+  const byTenant = new Map<string, Array<PendingBatch<QueryRequest> | PendingBatch<QueryRangeRequest>>>();
+  for (const item of pending) {
+    const tenantQueue = byTenant.get(item.request.tenantId) ?? [];
+    tenantQueue.push(item);
+    byTenant.set(item.request.tenantId, tenantQueue);
+  }
+
+  await Promise.all(
+    [...byTenant.values()].map(async (tenantQueue) => {
+      const first = tenantQueue[0];
+      if (first === undefined) return;
+      try {
+        const payload = await postJson<{ results: QueryResponseBody[] }>(
+          kind === "instant" ? "/api/query/batch" : "/api/query_range/batch",
+          { requests: tenantQueue.map((item) => item.request) }
+        );
+        tenantQueue.forEach((item, index) => {
+          const result = payload.results[index];
+          if (result === undefined) {
+            item.reject(new Error("Batch response missing query result"));
+          } else if (result.error !== undefined) {
+            item.reject(new Error(result.error));
+          } else {
+            item.resolve(result);
+          }
+        });
+      } catch (error) {
+        tenantQueue.forEach((item) => item.reject(error));
+      }
+    })
+  );
+}
+
+function deduplicatedQuery(
+  kind: "instant" | "range",
+  request: QueryRequest | QueryRangeRequest,
+  run: () => Promise<QueryResponseBody>
+): Promise<QueryResponseBody> {
+  const key = `${kind}:${JSON.stringify(request)}`;
+  const cached = queryResponseCache.get(key);
+  if (cached !== undefined && cached.expiresAt > Date.now()) {
+    return Promise.resolve({ ...cached.value, cached: true });
+  }
+  const existing = queryInFlight.get(key);
+  if (existing !== undefined) {
+    return existing;
+  }
+  const pending = run()
+    .then((value) => {
+      queryResponseCache.set(key, { expiresAt: Date.now() + QUERY_DEDUPE_TTL_MS, value });
+      return value;
+    })
+    .finally(() => {
+      queryInFlight.delete(key);
+    });
+  queryInFlight.set(key, pending);
+  return pending;
 }
 
 // ---------------------------------------------------------------------------

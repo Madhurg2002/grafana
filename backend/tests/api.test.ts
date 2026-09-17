@@ -431,6 +431,41 @@ describe("API routes (app.inject)", () => {
     });
   });
 
+  describe("POST /api/query/batch", () => {
+    it("returns one result per query for one authorized tenant", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/query/batch",
+        headers: { authorization: `Bearer ${issueTenantToken("t1")}` },
+        payload: {
+          requests: [
+            { tenantId: "t1", query: "up" },
+            { tenantId: "t1", query: "count(up)" },
+          ],
+        },
+      });
+      expect(response.statusCode).toBe(200);
+      expect((response.json() as { results: unknown[] }).results).toHaveLength(2);
+    });
+
+    it("rejects mixed-tenant batches", async () => {
+      const { issueTenantToken } = await import("../src/middleware/auth.js");
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/query/batch",
+        headers: { authorization: `Bearer ${issueTenantToken("t1")}` },
+        payload: {
+          requests: [
+            { tenantId: "t1", query: "up" },
+            { tenantId: "t2", query: "up" },
+          ],
+        },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+  });
+
   describe("Auth + connection routes", () => {
     it("POST /api/auth/signup creates an account and returns a token", async () => {
       const response = await app.inject({

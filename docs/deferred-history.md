@@ -62,3 +62,5 @@
 | Environment configuration | Shipped dashboard-managed Render/Vercel environment configuration and `.env.example`. |
 | Commit authorship policy | Established repository-owner authorship for new commits. |
 | Migration/Render todo follow-up | Removed completed migration and Render validation items from the active todo ledger after production verification. |
+| Dashboard request burst reduction | Shipped browser-side deduplication for identical queries, aligned range windows, one shared refresh clock, and the multi-query batch endpoint. |
+| Multi-query dashboard batch endpoint | Shipped tenant-authorized instant and range batch routes, frontend microtask batching, per-query results, and request reduction for dashboard refreshes. |
