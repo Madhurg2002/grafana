@@ -6,6 +6,8 @@ import {
   fetchShareView,
   type ShareViewPayload,
 } from "../lib/api";
+import { useAuth } from "../hooks/useAuth";
+import { DashboardView } from "./DashboardView";
 import { HealthBadge } from "./HealthBadge";
 import { StatusCard } from "./StatusCard";
 import { GaugeCard } from "./GaugeCard";
@@ -103,10 +105,12 @@ function SharedPage({ page, hostRows }: { page: SharePage; hostRows: ShareViewPa
  * Fetches the snapshot from /api/share/:id/view — no auth required.
  */
 export function ShareView({ id }: { id: string }): JSX.Element {
+  const { setTenantToken } = useAuth();
   const [data, setData] = useState<ShareViewPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restricted, setRestricted] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [editToken, setEditToken] = useState<string | null>(null);
   const [activePageId, setActivePageId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -119,6 +123,12 @@ export function ShareView({ id }: { id: string }): JSX.Element {
         // the link explicitly reports that access is restricted.
         try {
           const payload = await fetchShareView(id, token ?? undefined);
+          if (payload.canEdit === true && editToken === null) {
+            const access = await fetchShareAccessToken(id);
+            const nextEditToken = access.editToken ?? access.token;
+            setTenantToken(nextEditToken);
+            setEditToken(nextEditToken);
+          }
           if (!cancelled) {
             setData(payload);
             setRestricted(false);
@@ -134,10 +144,16 @@ export function ShareView({ id }: { id: string }): JSX.Element {
         // Email-restricted links: exchange the signed-in session for a
         // short-lived view token, re-minting when it expires (1h TTL).
         const access = await fetchShareAccessToken(id);
-        if (!cancelled) {
-          setAccessToken(access.token);
+        if (access.canEdit === true) {
+          const nextEditToken = access.editToken ?? access.token;
+          setTenantToken(nextEditToken);
+          setEditToken(nextEditToken);
         }
-        token = access.token;
+        const viewToken = access.viewToken ?? access.token;
+        if (!cancelled) {
+          setAccessToken(viewToken);
+        }
+        token = viewToken;
         const payload = await fetchShareView(id, token);
         if (!cancelled) {
           setData(payload);
@@ -203,6 +219,10 @@ export function ShareView({ id }: { id: string }): JSX.Element {
         Loading shared dashboard…
       </div>
     );
+  }
+
+  if (data.canEdit === true && editToken !== null) {
+    return <DashboardView tenantId={data.tenantId} embedded />;
   }
 
   function levelFor(percent: number): "emerald" | "amber" | "rose" {
@@ -330,7 +350,8 @@ export function ShareView({ id }: { id: string }): JSX.Element {
           animate={{ opacity: 1 }}
           className="mt-6 text-center text-[11px] text-zinc-600"
         >
-          Read-only shared snapshot · generated {new Date(data.generatedAt).toLocaleString()}
+          {data.canEdit === true ? "Editable shared dashboard" : "Read-only shared snapshot"} · generated{" "}
+          {new Date(data.generatedAt).toLocaleString()}
         </motion.p>
       </main>
     </div>

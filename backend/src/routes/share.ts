@@ -17,7 +17,7 @@ import { listPages, listWidgets, type WidgetKind } from "../db/schema.js";
 import { DEFAULT_PUBLIC_QUERIES } from "../services/publicQueries.js";
 import { sendShareInvite } from "../services/email.js";
 import { signViewToken, verifyViewToken } from "../services/shareTokens.js";
-import { resolveSession } from "../middleware/auth.js";
+import { issueTenantToken, resolveSession } from "../middleware/auth.js";
 
 const accessSchema = z.enum([
   "anyone_view",
@@ -449,22 +449,61 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
    * views call this first, then pass the token with every snapshot fetch.
    */
   app.post<{ Params: { id: string } }>("/api/share/:id/access-token", async (request, reply) => {
-    const user = await requireUser(request, reply);
-    if (user === null) {
-      return reply;
-    }
     const link = await getShareLink(request.params.id);
     if (link === null || link.revoked) {
       return reply.code(404).send({ error: "Share link not found or revoked" });
     }
+
+    // Public edit links receive a short-lived workspace token without
+    // requiring an account. View-only links never receive a write token.
+    if (link.access === "anyone_edit") {
+      const editToken = issueTenantToken(link.tenant_id, 60 * 60 * 1000, link.id);
+      return reply.code(200).send({
+        token: editToken,
+        editToken,
+        viewToken: editToken,
+        email: "",
+        canEdit: true,
+      });
+    }
+
+    const user = await requireUser(request, reply);
+    if (user === null) {
+      return reply;
+    }
     const email = user.email.toLowerCase();
-    if (!link.allowed_emails.includes(email)) {
+    if (link.access === "email_edit" && !link.allowed_emails.includes(email)) {
       return reply.code(403).send({ error: "This email is not on the allow-list" });
     }
+    if (link.access === "org_edit") {
+      const orgId = await getTenantOrg(link.tenant_id);
+      if (orgId === null || !(await isOrgMember(orgId, user.sub))) {
+        return reply.code(403).send({ error: "This account is not a member of the workspace organization" });
+      }
+    }
+    if (link.access === "email_view") {
+      const viewToken = signViewToken(link.id, email);
+      return reply.code(200).send({
+        token: viewToken,
+        viewToken,
+        email,
+        canEdit: false,
+      });
+    }
+    if (!link.access.endsWith("edit")) {
+      return reply.code(403).send({ error: "This share is view-only" });
+    }
+    const editToken = issueTenantToken(link.tenant_id, 60 * 60 * 1000, link.id);
     return reply.code(200).send({
-      token: signViewToken(link.id, email),
+      // Organization edit shares continue reading through the user's session;
+      // email edit shares need a signed view token for the snapshot route.
+      token: link.access === "email_edit" ? signViewToken(link.id, email) : editToken,
+      ...(link.access === "email_edit"
+        ? { viewToken: signViewToken(link.id, email) }
+        : {}),
+      editToken,
       email,
-      canEdit: link.access.endsWith("edit"),
+      canEdit: true,
     });
   });
 }
