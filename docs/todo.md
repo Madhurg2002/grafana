@@ -19,8 +19,6 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
-| Item | Why it matters | When / trigger |
-| :--- | :--- | :--- |
 | `render.yaml` infra validation | Spec exists; the real deploy is dashboard-configured. Validate once hosting lands on Render, then delete or keep as reference. | At first Render deploy attempt |
 | Alert webhook deliverability check | The evaluator posts to a user-supplied URL with retries; validate a real receiver (Slack/Discord webhook or similar) end-to-end. | First time someone configures a real webhook |
 
