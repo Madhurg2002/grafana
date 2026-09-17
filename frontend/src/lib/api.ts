@@ -248,6 +248,22 @@ export interface ShareViewPayload {
     networkTxSeries: Array<{ label: string; points: Array<{ timestamp: number; value: number }> }>;
   };
   generatedAt: string;
+  /** Composed pages rendered server-side — present when the tenant has pages. */
+  pages?: Array<{
+    id: number;
+    name: string;
+    isHome: boolean;
+    showBuiltins: boolean;
+    widgets: Array<{
+      id: number;
+      kind: "sparkline" | "gauge" | "stat" | "hosts_table";
+      title: string;
+      unit: string | null;
+      span: number;
+      value: number | null;
+      series: Array<{ label: string; points: Array<{ timestamp: number; value: number }> }>;
+    }>;
+  }>;
   access?: ShareAccess;
   canEdit?: boolean;
 }
@@ -705,6 +721,73 @@ export function detachTenantFromOrg(tenantId: string): Promise<{ attached: boole
     method: "DELETE",
     body: JSON.stringify({ tenantId }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Threshold alerts (migration 011 + evaluator)
+// ---------------------------------------------------------------------------
+
+export type AlertComparator = ">" | "<" | ">=" | "<=" | "==";
+export type AlertState = "pending" | "firing" | "resolved";
+
+export interface Alert {
+  id: number;
+  tenant_id: string;
+  title: string;
+  promql: string;
+  comparator: AlertComparator;
+  threshold: number;
+  for_seconds: number;
+  webhook_url: string | null;
+  enabled: boolean;
+  state: AlertState;
+  first_breach_at: string | null;
+  firing_time: string | null;
+  resolved_time: string | null;
+  last_value: number | null;
+  last_eval_at: string | null;
+  created_at: string;
+}
+
+export function listAlerts(tenantId: string): Promise<{ alerts: Alert[] }> {
+  return authedJson<{ alerts: Alert[] }>(
+    `/api/alerts/${encodeURIComponent(tenantId)}`
+  );
+}
+
+export function createAlert(
+  tenantId: string,
+  alert: {
+    title: string;
+    promql: string;
+    comparator: AlertComparator;
+    threshold: number;
+    forSeconds?: number;
+    webhookUrl?: string;
+  }
+): Promise<{ alert: Alert }> {
+  return authedJson<{ alert: Alert }>(
+    `/api/alerts/${encodeURIComponent(tenantId)}`,
+    { method: "POST", body: JSON.stringify(alert) }
+  );
+}
+
+export function setAlertEnabled(
+  tenantId: string,
+  alertId: number,
+  enabled: boolean
+): Promise<{ ok: boolean }> {
+  return authedJson<{ ok: boolean }>(
+    `/api/alerts/${encodeURIComponent(tenantId)}/${alertId}`,
+    { method: "PATCH", body: JSON.stringify({ enabled }) }
+  );
+}
+
+export function deleteAlert(tenantId: string, alertId: number): Promise<{ removed: boolean }> {
+  return authedJson<{ removed: boolean }>(
+    `/api/alerts/${encodeURIComponent(tenantId)}/${alertId}`,
+    { method: "DELETE" }
+  );
 }
 
 // ---------------------------------------------------------------------------

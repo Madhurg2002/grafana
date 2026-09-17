@@ -106,7 +106,7 @@ export function DashboardView({
       {/* In embedded mode the switcher/health/share controls live in a slim
           toolbar row directly under the single app header. */}
       {embedded && token !== null ? (
-        <div className="mx-auto flex w-full max-w-[1800px] items-center justify-between gap-2 px-4 pt-3 sm:px-8">
+        <div className="mx-auto flex w-full max-w-none items-center justify-between gap-2 px-4 pt-3 sm:px-8">
           <ConnectionSwitcher tenantId={tenantId} onActiveChanged={setActiveLabel} />
           <div className="flex items-center gap-2">
             <button
@@ -132,7 +132,7 @@ export function DashboardView({
           </div>
         </div>
       ) : !embedded && token !== null ? (
-        <div className="mx-auto mt-4 flex w-full max-w-[1800px] items-center justify-end gap-2 px-4 sm:px-8">
+        <div className="mx-auto mt-4 flex w-full max-w-none items-center justify-end gap-2 px-4 sm:px-8">
           <button
             type="button"
             title="Refresh every widget now"
@@ -158,9 +158,9 @@ export function DashboardView({
       ) : null}
 
       {/* Built-in node-exporter essentials (base layer) — per-page optional. */}
-      <main className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-8">
+      <main className="mx-auto w-full max-w-none px-4 py-5 sm:px-8">
         {showBuiltins ? (
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 3xl:grid-cols-6">
           <StatusCard
             title="Hosts Up"
             value={String(upCount)}
