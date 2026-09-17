@@ -58,3 +58,39 @@ This document outlines the specialized tools, domain skills, and execution capab
   - Mock external Undici calls to Prometheus via Vitest spies.
   - Test React components via React Testing Library.
   - Verify 100% pass rate on `npm test`.
+
+---
+
+## 7. Skill: `run-verification-loop`
+- **Description:** The standard end-of-run gate: typecheck + full tests in one command.
+- **Execution Directives:**
+  - Run `npm run verify` (typecheck both workspaces, then all tests) after any capability change.
+  - Fix every finding in the same run; re-run until green.
+  - Never report completion on an unverified tree.
+
+---
+
+## 8. Skill: `migration-status-audit`
+- **Description:** Inspects schema drift before/after deploys without changing anything.
+- **Execution Directives:**
+  - `npm run db:migrate:status` lists applied / pending / MODIFIED / orphan rows.
+  - MODIFIED (checksum drift) exits non-zero — resolve by adding a NEW migration, never by editing the applied file (runner fails closed anyway).
+  - Run it right after a production deploy to confirm the pre-deploy command applied everything.
+
+---
+
+## 9. Skill: `capability-mapping`
+- **Description:** Feeds the AGENTS.md auto code-review: maps changed files to the capabilities they touch.
+- **Execution Directives:**
+  - `npm run capability-review` diffs the working tree (or pass a commit/range arg) against `docs/capabilities.md` rows.
+  - For each printed capability, read every file in its Where column end-to-end: correctness, security, PromQL laws, error shape, tests.
+  - Record findings + fixes in the commit message body.
+
+---
+
+## 10. Skill: `live-smoke`
+- **Description:** End-to-end sanity check against a real Prometheus after connecting or deploying.
+- **Execution Directives:**
+  - `API=<backend-url> BASE=<prometheus-host> npm run smoke:live` (BASE can be scheme-less — exercises the https-inference path).
+  - Covers health → connect/auto-detect → normalized instant query → pages → SSE handshake.
+  - Any step failing means the pipeline is broken; fix before shipping.

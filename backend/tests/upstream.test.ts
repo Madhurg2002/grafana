@@ -139,7 +139,61 @@ describe("normalizeUpstreamInput", () => {
 
   it("returns unparseable input for probing to fail with a clear error", () => {
     const result = normalizeUpstreamInput("::::");
-    expect(result.base).toBe("http://::::");
+    expect(result.base).toBe("https://::::"); // https inferred (no usable host)
+  });
+
+  describe("scheme inference", () => {
+    it("infers https for public hostnames without a scheme or port", () => {
+      expect(normalizeUpstreamInput("prometheus.demo.prometheus.io").base).toBe(
+        "https://prometheus.demo.prometheus.io"
+      );
+    });
+
+    it("keeps http for private ranges, loopback, and bare IPv4", () => {
+      expect(normalizeUpstreamInput("10.0.0.5:9090").base).toBe("http://10.0.0.5:9090");
+      expect(normalizeUpstreamInput("localhost:9090").base).toBe("http://localhost:9090");
+      expect(normalizeUpstreamInput("192.168.1.10:9090").base).toBe("http://192.168.1.10:9090");
+      expect(normalizeUpstreamInput("prometheus.internal").base).toBe("http://prometheus.internal");
+    });
+
+    it("honors an explicit https scheme verbatim", () => {
+      const result = normalizeUpstreamInput("https://prom.example.com");
+      expect(result.base).toBe("https://prom.example.com");
+      expect(result.addedScheme).toBe(false);
+    });
+  });
+
+  describe("detectUpstream — scheme fallback", () => {
+    it("falls back to http when the inferred https base is dead", async () => {
+      const probe: ProbeFn = async (url) => {
+        if (url.startsWith("https://")) {
+          throw new Error("TLS handshake failed");
+        }
+        return {
+          status: 200,
+          body: { status: "success", data: { resultType: "vector", result: [] } },
+        };
+      };
+      const result = await detectUpstream("prometheus.demo.prometheus.io", { probe });
+      expect(result.type).toBe("prometheus");
+      expect(result.queryBaseUrl).toBe("http://prometheus.demo.prometheus.io");
+      expect(result.detail).toContain("inferred http");
+    });
+
+    it("prefers the inferred https base when it answers", async () => {
+      const seen: string[] = [];
+      const probe: ProbeFn = async (url) => {
+        seen.push(url);
+        return {
+          status: 200,
+          body: { status: "success", data: { resultType: "vector", result: [] } },
+        };
+      };
+      const result = await detectUpstream("prometheus.demo.prometheus.io", { probe });
+      expect(result.type).toBe("prometheus");
+      expect(result.queryBaseUrl).toBe("https://prometheus.demo.prometheus.io");
+      expect(seen[0]?.startsWith("https://")).toBe(true);
+    });
   });
 });
 

@@ -19,10 +19,15 @@
 
 ## Auto Code Review (MANDATORY)
 After finishing a run that adds or modifies a capability (any row in `docs/capabilities.md` that this run touched):
-1. Re-read the touched rows in `docs/capabilities.md` to identify each affected capability.
+1. Run `npm run capability-review` to list the touched capabilities and their Where-file lists.
 2. For EACH affected capability, review the files listed in its "Where" column end-to-end: correctness, security (auth + encryption paths), PromQL safety laws, error shape `{ error, details? }`, and test coverage.
-3. Fix every finding in the same run (not a new run), then re-run `npm run typecheck` and `npm test` until green.
+3. Fix every finding in the same run (not a new run), then re-run `npm run verify` (typecheck + all tests) until green.
 4. Record the review outcome (findings + fixes) in the commit message body so the history shows each capability was reviewed.
+
+## Standard Verification
+* End of every run: `npm run verify` (typecheck both workspaces + full test suite).
+* Migration questions: `npm run db:migrate:status` (read-only; MODIFIED rows fail closed at apply time).
+* Live sanity after connecting/deploying: `npm run smoke:live` (BASE may be scheme-less).
 
 ## PromQL Safety Laws
 When generating or modifying PromQL queries in `backend/src/services/prometheus.ts`:
