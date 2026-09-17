@@ -269,6 +269,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
           <button
             type="button"
             onClick={onBack}
+            title="Back to your dashboard"
             className="flex items-center gap-2 text-sm font-semibold tracking-tight"
           >
             <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
@@ -277,6 +278,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
           <button
             type="button"
             onClick={onBack}
+            title="Return to the dashboard"
             className="rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
           >
             Back to dashboard
@@ -313,6 +315,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
                 />
                 <button
                   type="button"
+                  title="Save your display name (shown to org members and in shared rosters)"
                   className="rounded-lg border border-zinc-800 px-3 text-xs text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300"
                   onClick={() => {
                     void handleSaveProfile();
@@ -346,6 +349,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
                 />
                 <button
                   type="button"
+                  title="Verify your current password, then set the new one — other sessions stay signed in"
                   disabled={currentPassword.length === 0 || newPassword.length < 8}
                   className="whitespace-nowrap rounded-lg border border-zinc-800 px-3 text-xs text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300 disabled:opacity-40"
                   onClick={() => {
@@ -385,6 +389,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
             <button
               type="button"
               disabled={orgBusy || newOrgName.trim().length < 2}
+              title="Create a shared workspace and get an invite code for teammates"
               className="flex items-center gap-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
               onClick={() => {
                 void handleCreateOrg();
@@ -402,6 +407,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
             <button
               type="button"
               disabled={orgBusy || inviteCode.trim().length === 0}
+              title="Join a teammate's organization using the invite code they shared"
               className="flex items-center gap-1 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300 disabled:opacity-50"
               onClick={() => {
                 void handleJoinOrg();
@@ -468,6 +474,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
                       ) : null}
                       <button
                         type="button"
+                        title="Show or hide the member roster for this org"
                         className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
                         onClick={() => expandOrg(org)}
                       >
@@ -513,6 +520,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
           {user !== null && orgs.length > 0 ? (
             <button
               type="button"
+              title="Org members immediately lose access to this workspace's dashboards"
               className="mt-2 text-[11px] text-zinc-500 underline-offset-2 hover:text-rose-300 hover:underline"
               onClick={() => {
                 void handleDetach();
@@ -652,6 +660,9 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
                       {!share.revoked ? (
                         <a
                           href={share.url}
+                          title="Open the shared dashboard in a new tab"
+                          target="_blank"
+                          rel="noreferrer"
                           className="flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-emerald-300 transition hover:border-emerald-500/40"
                         >
                           <ExternalLink className="h-3 w-3" aria-hidden />
