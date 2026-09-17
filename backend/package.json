@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "db:init": "tsx src/db/init.ts",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate:status": "tsx src/db/migrateStatus.ts",
     "rotate": "tsx src/scripts/rotateEncryptionKey.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
