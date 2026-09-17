@@ -12,7 +12,7 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
 | Alerting (threshold → notifier) | The biggest Grafana-parity gap. Needs an `alerts` table (migration 010), a notifier service (webhook first; email waits for prod), and alert widgets in the UI. | Next feature cycle — start once the page-widget UX settles |
-| Apply migrations 008/009 on the production DB | Pre-deploy command (`npm run db:migrate`) is now wired in `render.yaml` (PR #9) — the tables apply automatically at the next production deploy. Verify org/pages features right after it. | At the next deploy — verify, then remove this row |
+| Apply migrations 008–010 on the production DB | Pre-deploy command (`npm run db:migrate`) is wired in `render.yaml` (PR #9) — 008 orgs, 009 page_widgets, and 010 per-page built-ins apply automatically at the next production deploy. Verify orgs/pages/built-ins toggle right after it. | At the next deploy — verify, then remove this row |
 | Click-to-filter host drill-down | Hosts-table widget renders, but clicking a host doesn't scope gauges/sparklines to it. | With the alerting cycle (same dashboard surface) |
 
 ## 🟠 Soon — hardening while the app is in real use

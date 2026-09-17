@@ -11,7 +11,7 @@ Status legend: ✅ Done · 🔶 Done with simplification · ⏳ Deferred
 | Item | Status | Notes |
 | :--- | :--- | :--- |
 | AES-256-GCM token vault (`iv:authTag:ciphertext`, hex) | ✅ | `backend/src/db/encryption.ts`; key from `ENCRYPTION_KEY` (32-byte hex) |
-| PostgreSQL schema | ✅ | Versioned migrations (001 core, 002 indexes/trigger, 003 users+shares, 004 upstream_type) via checksum-verified, advisory-locked runner |
+| PostgreSQL schema | ✅ | Versioned migrations (001 core, 002 indexes/trigger, 003 users+shares, 004 upstream_type, 007 pages, 009 page_widgets, **010 per-page built-ins toggle**) via checksum-verified, advisory-locked runner |
 | PromQL normalizer (all 3 safety laws) | ✅ | Physical NIC filter, MemFree→MemAvailable, ≥[5m] rate windows; unit-tested |
 | `lru-cache` (300s TTL) query cache | ✅ | `backend/src/services/cache.ts` |
 | 3-state circuit breaker | ✅ | 5 fails/3000ms → 30s open → half-open; open-state fallback serves last-known value |

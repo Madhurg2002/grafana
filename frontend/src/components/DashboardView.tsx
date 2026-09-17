@@ -15,6 +15,7 @@ import { SparkLineCard } from "./SparkLineCard";
 import { ConnectionSwitcher } from "./ConnectionSwitcher";
 import { CustomPanels } from "./CustomPanels";
 import { ShareDialog } from "./ShareDialog";
+import type { DashboardPage } from "../lib/api";
 import { DEFAULT_QUERIES, useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
 import { useSSE } from "../hooks/useSSE";
 import { useAuth } from "../hooks/useAuth";
@@ -48,6 +49,10 @@ export function DashboardView({
   const { token } = useAuth();
   const [activeLabel, setActiveLabel] = useState<string>("default");
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  // The built-in essentials strip is optional per page — the pages workspace
+  // reports the active page; pages that opt out render only their own widgets.
+  const [activePage, setActivePage] = useState<DashboardPage | null>(null);
+  const showBuiltins = token === null ? true : activePage === null ? true : activePage.show_builtins !== false;
   // The built-in strip follows a 1h window; pages override their own.
   const cpu = useInstantMetric(tenantId, DEFAULT_QUERIES.cpu);
   const ram = useInstantMetric(tenantId, DEFAULT_QUERIES.ram);
@@ -151,8 +156,9 @@ export function DashboardView({
         <ShareDialog tenantId={tenantId} onClose={() => setShareDialogOpen(false)} />
       ) : null}
 
-      {/* Built-in node-exporter essentials (base layer). */}
+      {/* Built-in node-exporter essentials (base layer) — per-page optional. */}
       <main className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-8">
+        {showBuiltins ? (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <StatusCard
             title="Hosts Up"
@@ -175,7 +181,9 @@ export function DashboardView({
             query={DEFAULT_QUERIES.ram}
           />
         </section>
+        ) : null}
 
+        {showBuiltins ? (
         <section className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <SparkLineCard
             title="Network RX"
@@ -192,8 +200,11 @@ export function DashboardView({
             query={DEFAULT_QUERIES.networkTx}
           />
         </section>
+        ) : null}
 
-        {token !== null ? <CustomPanels tenantId={tenantId} wide /> : null}
+        {token !== null ? (
+          <CustomPanels tenantId={tenantId} wide onActivePageChange={setActivePage} />
+        ) : null}
 
         <motion.p
           initial={{ opacity: 0 }}
