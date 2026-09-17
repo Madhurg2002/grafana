@@ -19,7 +19,8 @@
 | :--- | :--- | :--- |
 | `docs/capabilities.md` | Full capability map: what exists, where it lives, how it is tested | Add/update a row **in the same commit** when a run ships or changes a capability |
 | `docs/todo.md` | ONLY the remaining work + when each item should be done (no completed rows) | Add/update/remove rows in the **same commit** as the work that changes them; remove rows when they ship |
-| `docs/deferred.md` | Historical deferred ledger (append-only) | Append rows for anything unfinished in a commit; flip to ✅ when it ships — never delete |
+| `docs/deferred.md` | Current unfinished work and known limitations | Add unresolved items in the same commit; remove items when they ship. Do not keep completed rows here. |
+| `docs/deferred-history.md` | Historical record of work that was once deferred and later shipped | Move completed deferred items here when removing them from `docs/deferred.md`; do not add active work here. |
 | `docs/skills.md` | Deep-dive on services/architecture | Update when the described behavior changes |
 | `docs/repoStructure.md` | File-tree conventions | Update when adding/removing top-level structure |
 
@@ -55,7 +56,7 @@ When generating or modifying PromQL queries in `backend/src/services/prometheus.
 4. **New user-facing surface?** → route in `frontend/src/App.tsx` parseRoute + component; auth-gated surfaces live under `SignedInApp`. Keep ONE header (`SignedInApp`'s); embedded views render toolbars, not headers.
 5. **Internal identifiers (tenant IDs, user IDs)?** → NEVER render them in the UI. Users see labels/emails only.
 6. **New API error?** → always `{ error, details? }` with zod issue paths; the client (`authedJson`) surfaces `details` so failures are diagnosable.
-7. **Anything you cannot finish now?** → `docs/deferred.md` row in the SAME commit.
+7. **Anything you cannot finish now?** → add it to `docs/deferred.md` in the SAME commit; remove it when it ships.
 
 ## Migrations Policy
 * `backend/src/db/migrations/` files are standalone; the app runtime NEVER runs them implicitly.
