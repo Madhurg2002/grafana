@@ -120,6 +120,7 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
             {mode === "signup" && /already exists/i.test(error) ? (
               <button
                 type="button"
+                title="Switch to the sign-in form"
                 className="mt-1 font-semibold text-emerald-300 hover:text-emerald-200"
                 onClick={() => {
                   setMode("login");
@@ -135,6 +136,7 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
         <button
           type="submit"
           disabled={submitting}
+          title={mode === "signup" ? "Create your free account" : "Sign in with your email and password"}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {mode === "signup" ? <UserPlus className="h-4 w-4" aria-hidden /> : <LogIn className="h-4 w-4" aria-hidden />}
@@ -146,6 +148,7 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
         {mode === "signup" ? "Already have an account?" : "New here?"}{" "}
         <button
           type="button"
+          title={mode === "signup" ? "Switch to the sign-in form" : "Switch to the sign-up form"}
           className="font-semibold text-emerald-300 hover:text-emerald-200"
           onClick={() => {
             setMode(mode === "signup" ? "login" : "signup");

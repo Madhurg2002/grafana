@@ -248,6 +248,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
               <div className="flex gap-2">
                 <button
                   type="button"
+                  title="Verify the endpoint, save it encrypted, and make it the active source"
                   className="flex-1 rounded-lg bg-emerald-500/90 px-2 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
                   disabled={busy || url.trim().length === 0}
                   onClick={() => {
@@ -271,6 +272,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
           ) : (
             <button
               type="button"
+              title="Store another Prometheus or Grafana endpoint — switch between them anytime"
               className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-zinc-700 px-2 py-1.5 text-xs text-zinc-400 transition hover:border-emerald-500/40 hover:text-emerald-300"
               onClick={() => setAdding(true)}
             >

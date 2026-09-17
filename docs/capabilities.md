@@ -6,7 +6,7 @@
 
 | Capability | Where |
 | :--- | :--- |
-| Accounts: signup/login/me (scrypt + HMAC sessions) | `backend/src/routes/auth.ts`, `frontend/src/hooks/useAuth.tsx` |
+| Accounts: signup/login/me (scrypt + HMAC sessions) | `backend/src/routes/auth.ts`, `frontend/src/hooks/useAuth.tsx` — every interactive control across the app carries a `title` tooltip explaining its effect |
 | Account settings: password change + display name | `POST /api/auth/change-password`, `PATCH /api/auth/profile`, Profile → Account |
 | Connect flow: URI + optional token → detect (Prometheus **or** Grafana) → encrypt → persist | `backend/src/routes/connect.ts`, `backend/src/services/upstream.ts`, `frontend/src/components/ConnectForm.tsx` |
 | Multiple stored URIs per user + one-click switch (no re-auth) — add/switch/delete opens as a centered modal with per-field guidance | `ConnectionSwitcher.tsx`, `/api/connections/:tenantId*` |
