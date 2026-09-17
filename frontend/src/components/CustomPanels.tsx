@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
+  Copy,
   GripVertical,
   LayoutDashboard,
   Maximize2,
@@ -10,6 +11,7 @@ import {
   Table2,
   Trash2,
   Pencil,
+  X,
 } from "lucide-react";
 import { GaugeCard } from "./GaugeCard";
 import { SparkLineCard } from "./SparkLineCard";
@@ -167,6 +169,12 @@ function HostsTable({
     <section className="glass-card p-4" data-testid="hosts-widget">
       <h2 className="mb-2 text-sm font-semibold text-zinc-300">
         Scrape targets
+        <span
+          className="ml-2 rounded bg-zinc-800/80 px-1.5 py-0.5 font-mono text-[10px] font-normal text-zinc-400"
+          title="This table is powered by the `up` metric — Prometheus's own health check for every scrape target. 1 = up, 0 = down."
+        >
+          metric: up
+        </span>
         <span className="ml-2 text-xs font-normal text-zinc-500">
           {selectedHost === null
             ? "click a host to scope gauges/sparklines to it"
@@ -501,6 +509,26 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
     }
   }
 
+  /** Duplicates a widget onto the same page, appending it at the end. */
+  async function handleClone(widget: PageWidget): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      await createWidget(tenantId, widget.page_id, {
+        kind: widget.kind,
+        title: `${widget.title} (copy)`,
+        promql: widget.kind === "hosts_table" ? undefined : widget.promql,
+        unit: widget.unit ?? undefined,
+        span: widget.span,
+      });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clone widget");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleDelete(id: number): Promise<void> {
     setBusy(true);
     try {
@@ -814,7 +842,26 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
       ) : null}
 
       {adding && activePage !== null ? (
-        <div className="mt-3 flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingWidget !== null ? "Edit widget" : "Add widget"}
+          data-testid="widget-form-modal"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setAdding(false);
+              resetForm();
+              setError(null);
+            }
+          }}
+          onClick={() => {
+            setAdding(false);
+            resetForm();
+            setError(null);
+          }}
+        >
+        <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <div className="grid grid-cols-1 gap-x-2 gap-y-2 sm:grid-cols-4">
             <div className="flex flex-col gap-0.5">
               <input
@@ -915,7 +962,25 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               no query needed.
             </p>
           )}
-          <div className="flex gap-2">
+          <div className="mt-1 flex items-center justify-between">
+            <p className="text-sm font-semibold text-zinc-200">
+              {editingWidget !== null ? `Edit “${editingWidget.title}”` : `Add widget to ${activePage.name}`}
+            </p>
+            <button
+              type="button"
+              aria-label="Close"
+              title="Close without saving"
+              className="rounded p-1 text-zinc-500 transition hover:text-zinc-200"
+              onClick={() => {
+                setAdding(false);
+                resetForm();
+                setError(null);
+              }}
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          </div>
+          <div className="mt-3 flex gap-2">
             <button
               type="button"
               className="rounded-lg bg-emerald-500/90 px-3 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
@@ -946,6 +1011,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               Cancel
             </button>
           </div>
+        </div>
         </div>
       ) : null}
 
@@ -1012,6 +1078,18 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 }}
               >
                 <Minimize2 className="h-3 w-3" aria-hidden />
+              </button>
+              <button
+                type="button"
+                aria-label={`Clone ${widget.title}`}
+                title="Duplicate this widget — the copy is added at the end of the page"
+                className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30"
+                disabled={busy}
+                onClick={() => {
+                  void handleClone(widget);
+                }}
+              >
+                <Copy className="h-3 w-3" aria-hidden />
               </button>
               <button
                 type="button"

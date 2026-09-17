@@ -376,7 +376,8 @@ const widgetSchema = z.object({
   title: z.string().min(1).max(80),
   /** Required for metric widgets; hosts_table ignores it. */
   promql: z.string().max(4096).optional(),
-  unit: z.string().max(24).optional(),
+  /** Nullable in patches: null clears the unit. */
+  unit: z.string().max(24).nullish(),
   span: z.number().int().min(1).max(3).optional(),
 });
 const widgetPatchSchema = widgetSchema.partial();

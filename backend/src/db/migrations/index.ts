@@ -8,6 +8,8 @@ import { M008 } from "./008-orgs.js";
 import { M009 } from "./009-page-widgets.js";
 import { M010 } from "./010-page-show-builtins.js";
 import { M011 } from "./011-alerts.js";
+import { M012 } from "./012-user-lookup-index.js";
+import { M013 } from "./013-share-links-multi.js";
 
 /**
  * Ordered, immutable migrations. Once applied, a migration's SQL MUST NOT be
@@ -74,4 +76,6 @@ export const MIGRATIONS: Migration[] = [
   M009,
   M010,
   M011,
+  M012,
+  M013,
 ];
