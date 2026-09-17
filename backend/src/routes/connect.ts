@@ -546,6 +546,7 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
       defaultSpan: z.number().int().min(1).max(3).optional(),
       refreshSeconds: z.number().int().min(5).max(600).optional(),
       windowMinutes: z.number().int().min(5).max(10080).optional(),
+      showBuiltins: z.boolean().optional(),
     });
     const parsed = bodySchema.safeParse(request.body);
     if (!parsed.success) {
@@ -566,7 +567,11 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
 // Dashboard pages ("Home" + user-created groupings of panels)
 // ---------------------------------------------------------------------------
 
-const pageSchema = z.object({ name: z.string().min(1).max(64).regex(/^[a-zA-Z0-9-_ ]+$/) });
+const pageSchema = z.object({
+  name: z.string().min(1).max(64).regex(/^[a-zA-Z0-9-_ ]+$/),
+  // New pages may skip the fixed built-in essentials strip entirely.
+  showBuiltins: z.boolean().optional(),
+});
 
 /** GET /api/pages/:tenantId — ordered pages; lowest position is Home. */
 app.get<{ Params: { tenantId: string } }>("/api/pages/:tenantId", async (request, reply) => {
@@ -602,7 +607,11 @@ app.post<{ Params: { tenantId: string }; Body: unknown }>(
         error: "Page name must be 1–64 chars (letters, digits, spaces, - _)",
       });
     }
-    const page = await createPage(tenantId.data, parsed.data.name.trim());
+    const page = await createPage(
+      tenantId.data,
+      parsed.data.name.trim(),
+      parsed.data.showBuiltins ?? true
+    );
     return reply.code(201).send({ page });
   }
 );

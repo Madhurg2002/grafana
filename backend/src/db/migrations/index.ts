@@ -6,6 +6,7 @@ import { M006 } from "./006-share-access.js";
 import { M007 } from "./007-dashboard-pages.js";
 import { M008 } from "./008-orgs.js";
 import { M009 } from "./009-page-widgets.js";
+import { M010 } from "./010-page-show-builtins.js";
 
 /**
  * Ordered, immutable migrations. Once applied, a migration's SQL MUST NOT be
@@ -70,4 +71,5 @@ export const MIGRATIONS: Migration[] = [
   M007,
   M008,
   M009,
+  M010,
 ];

@@ -282,12 +282,13 @@ export interface DashboardPageRow {
   default_span?: number;
   refresh_seconds?: number;
   window_minutes?: number;
+  show_builtins?: boolean;
 }
 
 export async function listPages(tenantId: string): Promise<DashboardPageRow[]> {
   const result = await getPool().query<DashboardPageRow>(
     `SELECT id, tenant_id, name, position, is_home, default_span,
-            refresh_seconds, window_minutes
+            refresh_seconds, window_minutes, show_builtins
      FROM dashboard_pages
      WHERE tenant_id = $1
      ORDER BY is_home DESC, position, id`,
@@ -296,13 +297,17 @@ export async function listPages(tenantId: string): Promise<DashboardPageRow[]> {
   return result.rows;
 }
 
-export async function createPage(tenantId: string, name: string): Promise<DashboardPageRow> {
+export async function createPage(
+  tenantId: string,
+  name: string,
+  showBuiltins = true
+): Promise<DashboardPageRow> {
   const result = await getPool().query<DashboardPageRow>(
-    `INSERT INTO dashboard_pages (tenant_id, name, position)
-     VALUES ($1, $2, COALESCE((SELECT MAX(position) + 1 FROM dashboard_pages WHERE tenant_id = $1), 0))
+    `INSERT INTO dashboard_pages (tenant_id, name, position, show_builtins)
+     VALUES ($1, $2, COALESCE((SELECT MAX(position) + 1 FROM dashboard_pages WHERE tenant_id = $1), 0), $3)
      RETURNING id, tenant_id, name, position, is_home, default_span,
-               refresh_seconds, window_minutes`,
-    [tenantId, name]
+               refresh_seconds, window_minutes, show_builtins`,
+    [tenantId, name, showBuiltins]
   );
   return result.rows[0] as DashboardPageRow;
 }
@@ -351,14 +356,19 @@ export async function setHomePage(tenantId: string, pageId: number): Promise<boo
 
 const pageSettingsSchemaSpan = z.coerce.number().int().min(1).max(3);
 
-/** Updates page display settings (span, refresh cadence, time window). */
+/** Updates page display settings (span, refresh cadence, time window, built-ins). */
 export async function updatePageSettings(
   tenantId: string,
   pageId: number,
-  settings: { defaultSpan?: number; refreshSeconds?: number; windowMinutes?: number }
+  settings: {
+    defaultSpan?: number;
+    refreshSeconds?: number;
+    windowMinutes?: number;
+    showBuiltins?: boolean;
+  }
 ): Promise<boolean> {
   const sets: string[] = [];
-  const values: Array<string | number> = [];
+  const values: Array<string | number | boolean> = [];
   if (settings.defaultSpan !== undefined) {
     const span = pageSettingsSchemaSpan.safeParse(settings.defaultSpan);
     if (!span.success) return false;
@@ -376,6 +386,10 @@ export async function updatePageSettings(
     if (!win.success) return false;
     values.push(win.data);
     sets.push(`window_minutes = $${values.length}`);
+  }
+  if (settings.showBuiltins !== undefined) {
+    values.push(settings.showBuiltins === true);
+    sets.push(`show_builtins = $${values.length}`);
   }
   if (sets.length === 0) {
     return false;
