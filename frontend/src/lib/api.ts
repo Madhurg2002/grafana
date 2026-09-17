@@ -434,7 +434,7 @@ export function fetchShareAccessToken(id: string): Promise<{
     canEdit: boolean;
   }>(
     `/api/share/${encodeURIComponent(id)}/access-token`,
-    { method: "POST" }
+    { method: "POST", body: JSON.stringify({}) }
   );
 }
 
