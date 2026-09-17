@@ -209,6 +209,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
+                title="Generate the link with the audience and access level selected above"
                 className="flex-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
                 disabled={busy || (audience === "email" && emails.trim().length === 0)}
                 onClick={() => {
@@ -267,6 +268,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                 <button
                   type="button"
                   data-testid="copy-share-link"
+                  title="Copy the share URL to your clipboard"
                   className="flex-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
                   onClick={() => {
                     void navigator.clipboard.writeText(fullUrl).catch(() => {
