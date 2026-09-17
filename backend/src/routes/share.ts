@@ -13,6 +13,7 @@ import {
   type ShareAccess,
 } from "../db/users.js";
 import { instantQuery, rangeQuery } from "../services/prometheus.js";
+import { listPages, listWidgets, type WidgetKind } from "../db/schema.js";
 import { DEFAULT_PUBLIC_QUERIES } from "../services/publicQueries.js";
 import { sendShareInvite } from "../services/email.js";
 import { signViewToken, verifyViewToken } from "../services/shareTokens.js";
@@ -57,6 +58,26 @@ export interface ShareSeries {
   points: ShareSeriesPoint[];
 }
 
+export interface ShareViewWidget {
+  id: number;
+  kind: WidgetKind;
+  title: string;
+  unit: string | null;
+  span: number;
+  /** Latest value for stat/gauge widgets (null when upstream degraded). */
+  value: number | null;
+  /** Time series for sparkline widgets. */
+  series: ShareSeries[];
+}
+
+export interface ShareViewPage {
+  id: number;
+  name: string;
+  isHome: boolean;
+  showBuiltins: boolean;
+  widgets: ShareViewWidget[];
+}
+
 export interface ShareViewPayload {
   tenantId: string;
   label: string | null;
@@ -70,10 +91,17 @@ export interface ShareViewPayload {
     networkRxSeries: ShareSeries[];
     networkTxSeries: ShareSeries[];
   };
+  /** The tenant's composed pages with server-rendered widget values.
+   *  Absent/empty for links created before pages existed — clients fall
+   *  back to the fixed built-in layout. */
+  pages?: ShareViewPage[];
   generatedAt: string;
   access: ShareAccess;
   canEdit: boolean;
 }
+
+/** Upper bound on widgets rendered into one snapshot (cost guard). */
+const MAX_SNAPSHOT_WIDGETS = 40;
 
 function scalarFrom(result: unknown[]): number | null {
   if (result.length === 0) {
@@ -341,6 +369,64 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       // Upstream degraded — return whatever we have; client shows stale state.
     }
 
+    // Share-view parity: embed the tenant's composed pages with values
+    // rendered server-side through the same breaker/cache/normalizer stack.
+    // Each widget degrades independently — one bad query never fails the
+    // whole snapshot.
+    const pages: ShareViewPage[] = [];
+    try {
+      const pageRows = await listPages(link.tenant_id);
+      let widgetBudget = MAX_SNAPSHOT_WIDGETS;
+      for (const page of pageRows) {
+        if (widgetBudget <= 0) {
+          break;
+        }
+        const widgetRows = (await listWidgets(page.id, link.tenant_id)).slice(0, widgetBudget);
+        widgetBudget -= widgetRows.length;
+        const end = new Date();
+        const start = new Date(end.getTime() - 60 * 60_000);
+        const renderedWidgets: ShareViewWidget[] = await Promise.all(
+          widgetRows.map(async (widget) => {
+            const base = {
+              id: widget.id,
+              kind: widget.kind,
+              title: widget.title,
+              unit: widget.unit,
+              span: widget.span,
+            };
+            if (widget.kind === "hosts_table") {
+              return { ...base, value: null, series: [] };
+            }
+            try {
+              if (widget.kind === "sparkline") {
+                const ranged = await rangeQuery({
+                  tenantId: link.tenant_id,
+                  query: widget.promql,
+                  start: start.toISOString(),
+                  end: end.toISOString(),
+                  step: "5m" as const,
+                });
+                return { ...base, value: null, series: seriesFrom(ranged.result.result) };
+              }
+              const instant = await instantQuery({ tenantId: link.tenant_id, query: widget.promql });
+              return { ...base, value: scalarFrom(instant.result.result), series: [] };
+            } catch {
+              return { ...base, value: null, series: [] };
+            }
+          })
+        );
+        pages.push({
+          id: page.id,
+          name: page.name,
+          isHome: page.is_home ?? false,
+          showBuiltins: page.show_builtins ?? true,
+          widgets: renderedWidgets,
+        });
+      }
+    } catch {
+      // Pages unavailable — snapshot still serves the built-in layout.
+    }
+
     const claims = resolveSession(request);
     const isOwner = claims !== null && claims.type === "user" && (await tenantOwnedBy(link.tenant_id, claims.sub));
     const payload: ShareViewPayload = {
@@ -348,6 +434,7 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       label: link.label,
       createdAt: link.created_at.toISOString(),
       metrics,
+      ...(pages.length > 0 ? { pages } : {}),
       generatedAt: new Date().toISOString(),
       access: link.access,
       canEdit: link.access.endsWith("edit") || isOwner,
