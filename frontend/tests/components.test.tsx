@@ -137,12 +137,21 @@ describe("SparkLineCard", () => {
 
 describe("query request coalescing", () => {
   it("shares one network request for identical concurrent instant queries", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({ resultType: "vector", result: [], cached: false, query: "up" }),
+    // The batch endpoint echoes one result per request — mirror that shape.
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { requests?: unknown[] };
+      return new Response(
+        JSON.stringify({
+          results: (body.requests ?? []).map(() => ({
+            resultType: "vector",
+            result: [],
+            cached: false,
+            query: "up",
+          })),
+        }),
         { status: 200 }
-      )
-    );
+      );
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     await Promise.all([
@@ -323,7 +332,11 @@ describe("ShareView", () => {
       )
     );
     const { ShareView } = await import("../src/components/ShareView");
-    render(<ShareView id="abc123" />);
+    render(
+      <AuthProvider>
+        <ShareView id="abc123" />
+      </AuthProvider>
+    );
     expect(await screen.findByText("21.5%")).toBeInTheDocument();
     expect(screen.getByText("44.0%")).toBeInTheDocument();
     expect(screen.getByText("h1")).toBeInTheDocument();
@@ -337,7 +350,11 @@ describe("ShareView", () => {
       )
     );
     const { ShareView } = await import("../src/components/ShareView");
-    render(<ShareView id="gone" />);
+    render(
+      <AuthProvider>
+        <ShareView id="gone" />
+      </AuthProvider>
+    );
     expect(await screen.findByText(/share link unavailable/i)).toBeInTheDocument();
   });
 });

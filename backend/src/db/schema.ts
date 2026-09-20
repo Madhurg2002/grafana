@@ -277,6 +277,68 @@ export async function deleteConnection(tenantId: string, connectionId: number): 
   return (result.rowCount ?? 0) > 0;
 }
 
+/**
+ * Edits a stored connection in place: relabel, swap the upstream URL, or
+ * rotate the auth token. Re-reads the encrypted token when the caller sends
+ * a replacement; leaves the stored one untouched when authTokenEncrypted is
+ * undefined (null clears it). Activating is a separate, explicit call so the
+ * switcher's activate flow stays the only path that changes is_active.
+ */
+export async function updateConnection(
+  tenantId: string,
+  connectionId: number,
+  patch: {
+    label?: string;
+    prometheusUrl?: string;
+    /** Encrypted payload (iv:authTag:ciphertext); undefined keeps, null clears. */
+    authTokenEncrypted?: string | null;
+    status?: "connected" | "error" | "unknown";
+    upstreamType?: "prometheus" | "grafana";
+  }
+): Promise<ConnectionRow | null> {
+  const values: unknown[] = [];
+  const sets: string[] = [];
+  if (patch.label !== undefined) {
+    values.push(patch.label);
+    sets.push(`label = $${values.length}`);
+  }
+  if (patch.prometheusUrl !== undefined) {
+    values.push(patch.prometheusUrl);
+    sets.push(`prometheus_url = $${values.length}`);
+  }
+  if (patch.authTokenEncrypted !== undefined) {
+    values.push(patch.authTokenEncrypted);
+    sets.push(`auth_token_encrypted = $${values.length}`);
+  }
+  if (patch.status !== undefined) {
+    values.push(patch.status);
+    sets.push(`status = $${values.length}`);
+  }
+  if (patch.upstreamType !== undefined) {
+    values.push(patch.upstreamType);
+    sets.push(`upstream_type = $${values.length}`);
+  }
+  if (sets.length === 0) {
+    const existing = await getPool().query<ConnectionRow>(
+      `SELECT id, tenant_id, prometheus_url, auth_token_encrypted,
+              status, upstream_type, label, is_active, created_at, updated_at
+       FROM prometheus_connections
+       WHERE id = $1 AND tenant_id = $2`,
+      [connectionId, tenantId]
+    );
+    return existing.rows[0] ?? null;
+  }
+  values.push(connectionId, tenantId);
+  const updated = await getPool().query<ConnectionRow>(
+    `UPDATE prometheus_connections SET ${sets.join(", ")}
+     WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
+     RETURNING id, tenant_id, prometheus_url, auth_token_encrypted,
+               status, upstream_type, label, is_active, created_at, updated_at`,
+    values
+  );
+  return updated.rows[0] ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Custom dashboard panels (user-defined views)
 // ---------------------------------------------------------------------------

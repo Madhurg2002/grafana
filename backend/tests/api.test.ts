@@ -70,6 +70,22 @@ vi.mock("../src/db/schema.js", () => ({
   listConnections: vi.fn(async () => []),
   activateConnection: vi.fn(async () => true),
   deleteConnection: vi.fn(async () => true),
+  updateConnection: vi.fn(async (
+    _tenantId: string,
+    id: number,
+    patch: { label?: string; prometheusUrl?: string; authTokenEncrypted?: string | null; status?: string; upstreamType?: string }
+  ) => ({
+    id,
+    tenant_id: _tenantId,
+    prometheus_url: patch.prometheusUrl ?? "https://prom.example.com",
+    auth_token_encrypted:
+      patch.authTokenEncrypted === undefined ? null : patch.authTokenEncrypted,
+    status: patch.status ?? "connected",
+    upstream_type: patch.upstreamType ?? "prometheus",
+    label: patch.label ?? "default",
+    is_active: false,
+    updated_at: new Date(),
+  })),
   listPanels: vi.fn(async () => []),
   createPanel: vi.fn(async (input: { tenantId: string; title: string; promql: string; kind: string; unit?: string }) => ({
     id: 7,
@@ -463,6 +479,106 @@ describe("API routes (app.inject)", () => {
         },
       });
       expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe("PATCH /api/connections/:tenantId/:id", () => {
+    /** Signs in and returns the bearer token used for tenant access. */
+    async function getAuthToken(): Promise<string> {
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      return token;
+    }
+
+    it("relabels a connection without probing the upstream", async () => {
+      const token = await getAuthToken();
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/connections/tenant-a/42",
+        payload: { label: "prod-eu" },
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as { connection: { label: string; status: string } };
+      expect(body.connection.label).toBe("prod-eu");
+
+      const schema = await import("../src/db/schema.js");
+      const updateMock = vi.mocked(schema.updateConnection);
+      expect(updateMock).toHaveBeenCalledWith("tenant-a", 42, { label: "prod-eu" });
+      // No URL change — detection/probing must NOT have run.
+      const { detectUpstream } = await import("../src/services/upstream.js");
+      expect(detectUpstream).not.toHaveBeenCalled();
+    });
+
+    it("probes a new URL before persisting and stores the resolved base + encrypted token", async () => {
+      const token = await getAuthToken();
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/connections/tenant-a/42",
+        payload: { prometheusUrl: "https://prom-new.example.com", authToken: "fresh-token" },
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as { connection: { upstreamHost: string | null; hasToken: boolean } };
+      // The stored URL is the DETECTION-resolved base (mock resolves to prom.example.com),
+      // never the raw pasted input.
+      expect(body.connection.upstreamHost).toBe("prom.example.com");
+      expect(body.connection.hasToken).toBe(true);
+
+      const schema = await import("../src/db/schema.js");
+      const call = vi.mocked(schema.updateConnection).mock.calls[0]?.[2];
+      // Same detection contract: the DETECTION-resolved base is persisted.
+      expect(call?.prometheusUrl).toBe("https://prom.example.com");
+      // Token persisted encrypted — never plaintext.
+      expect(call?.authTokenEncrypted).toBeTruthy();
+      expect(call?.authTokenEncrypted).not.toContain("fresh-token");
+      expect(call?.authTokenEncrypted?.split(":")).toHaveLength(3);
+      expect(call?.status).toBe("connected");
+    });
+
+    it("rejects an unreachable new upstream with 502 and leaves the stored connection untouched", async () => {
+      const token = await getAuthToken();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: false, status: 503 }))
+      );
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/connections/tenant-a/42",
+        payload: { prometheusUrl: "https://prom-broken.example.com" },
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode).toBe(502);
+      const schema = await import("../src/db/schema.js");
+      expect(vi.mocked(schema.updateConnection)).not.toHaveBeenCalled();
+    });
+
+    it("rejects an empty patch with 400", async () => {
+      const token = await getAuthToken();
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/connections/tenant-a/42",
+        payload: {},
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("returns 404 when the connection does not belong to the tenant", async () => {
+      const token = await getAuthToken();
+      const schema = await import("../src/db/schema.js");
+      vi.mocked(schema.updateConnection).mockResolvedValueOnce(null);
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/connections/tenant-a/999",
+        payload: { label: "prod-eu" },
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode).toBe(404);
     });
   });
 
