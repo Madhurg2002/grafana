@@ -16,7 +16,7 @@ import { instantQuery, rangeQuery } from "../services/prometheus.js";
 import { listPages, listWidgets, type WidgetKind } from "../db/schema.js";
 import { DEFAULT_PUBLIC_QUERIES } from "../services/publicQueries.js";
 import { sendShareInvite } from "../services/email.js";
-import { signViewToken, verifyViewToken } from "../services/shareTokens.js";
+import { signViewToken, verifyViewToken, viewTokenEmail } from "../services/shareTokens.js";
 import { issueTenantToken, resolveSession } from "../middleware/auth.js";
 
 const accessSchema = z.enum([
@@ -292,13 +292,22 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(404).send({ error: "Share link not found or revoked" });
     }
     if (link.access.startsWith("email")) {
-      const email = request.query.email?.toLowerCase() ?? "";
+      // The signed view token is bound to the viewer's allow-listed email,
+      // so derive the identity from the token itself. The ?email= query
+      // param remains as a fallback for direct API callers; first-party
+      // clients send only the token.
+      const queryEmail = request.query.email?.toLowerCase().trim() ?? "";
       const token = request.query.token ?? "";
-      const allowed = link.allowed_emails.includes(email);
       const bearer = request.headers.authorization?.replace(/^Bearer\s+/i, "") ?? "";
+      const presented = token.length > 0 ? token : bearer;
+      const tokenEmail =
+        presented.length > 0 ? viewTokenEmail(link.id, presented) : null;
+      const email = queryEmail.length > 0 ? queryEmail : (tokenEmail ?? "");
+      const allowed = email.length > 0 && link.allowed_emails.includes(email);
       const tokenOk =
-        (token.length > 0 && verifyViewToken(link.id, email, token)) ||
-        (bearer.length > 0 && verifyViewToken(link.id, email, bearer));
+        presented.length > 0 &&
+        email.length > 0 &&
+        verifyViewToken(link.id, email, presented);
       if (!allowed || !tokenOk) {
         return reply.code(403).send({
           error: "This share is restricted — sign in with an allowed email",

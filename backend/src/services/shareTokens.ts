@@ -47,3 +47,33 @@ export function verifyViewToken(
     expiry > Date.now()
   );
 }
+
+/**
+ * Returns the allow-list email bound to a signature-valid view token, or
+ * null when the signature or share binding fails. Expiry is intentionally
+ * NOT checked here — callers pair this with `verifyViewToken` for the
+ * full validation. This lets the snapshot route identify the viewer from
+ * the token alone instead of requiring a client-supplied ?email= param
+ * (which no first-party client sends and which would be spoofable).
+ */
+export function viewTokenEmail(shareId: string, token: string): string | null {
+  const [encoded, signature] = token.split(".");
+  if (encoded === undefined || signature === undefined) {
+    return null;
+  }
+  const a = Buffer.from(signature);
+  const b = Buffer.from(hmac(encoded));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return null;
+  }
+  try {
+    const payload = Buffer.from(encoded, "base64url").toString("utf8");
+    const [tokenShare, tokenEmail] = payload.split("|");
+    if (tokenShare !== shareId || typeof tokenEmail !== "string" || tokenEmail.length === 0) {
+      return null;
+    }
+    return tokenEmail;
+  } catch {
+    return null;
+  }
+}
