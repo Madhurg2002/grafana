@@ -16,6 +16,7 @@ No remaining items.
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
 | Alert webhook deliverability check | The evaluator posts to a user-supplied URL with retries; validate a real receiver (Slack/Discord webhook or similar) end-to-end. | First time someone configures a real webhook |
+| Persistent firing-alert state for the header badge | The badge is event-driven (SSE transitions); it misses state for alerts that were already firing before the tab opened and never clears when a firing alert is deleted. A `GET /api/alerts/:tenantId/firing` seed (or badge hydration from the alerts list) closes the gap. | Next UI pass on alerting |
 
 ## 🟢 Later — explicitly deferred until prod-ready
 
