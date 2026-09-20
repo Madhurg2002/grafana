@@ -12,6 +12,9 @@ import {
   Trash2,
   Pencil,
   X,
+  Download,
+  FileDown,
+  FileUp,
 } from "lucide-react";
 import { GaugeCard } from "./GaugeCard";
 import { SparkLineCard } from "./SparkLineCard";
@@ -24,6 +27,8 @@ import {
   createWidget,
   deletePage,
   deleteWidget,
+  exportPageJson,
+  importPageJson,
   listPages,
   listWidgets,
   makePageHome,
@@ -35,6 +40,7 @@ import {
   type WidgetKind,
 } from "../lib/api";
 import { DEFAULT_QUERIES, useInstantMetric, useRangeMetric } from "../hooks/useDashboard";
+import { csvFilename, downloadCsv } from "../lib/csv";
 
 const PALETTE = ["#34d399", "#60a5fa", "#f472b6", "#fbbf24", "#a78bfa", "#38bdf8"];
 
@@ -163,6 +169,13 @@ function LiveWidget({
         percent={clamp(value)}
         level={levelFor(value)}
         query={query}
+        onExportCsv={(title, percent) => {
+          downloadCsv(csvFilename(title), [{
+            timestamp: new Date().toISOString(),
+            value: Number(percent.toFixed(3)),
+            unit: "%",
+          }]);
+        }}
       />
     );
   }
@@ -177,14 +190,34 @@ function LiveWidget({
   }
   const stat = firstScalar(instant.data);
   return (
-    <StatusCard
-      title={widget.title}
-      value={stat === null ? "—" : formatValue(stat)}
-      unit={widget.unit ?? ""}
-      level="emerald"
-      icon={LayoutDashboard}
-      subtitle={query.length > 40 ? `${query.slice(0, 40)}…` : query}
-    />
+    <div className="relative">
+      <StatusCard
+        title={widget.title}
+        value={stat === null ? "—" : formatValue(stat)}
+        unit={widget.unit ?? ""}
+        level="emerald"
+        icon={LayoutDashboard}
+        subtitle={query.length > 40 ? `${query.slice(0, 40)}…` : query}
+      />
+      {stat !== null ? (
+        <button
+          type="button"
+          data-testid="stat-csv"
+          title="Download this value as CSV"
+          aria-label={`Download ${widget.title} as CSV`}
+          className="absolute right-2 top-2 rounded p-1 text-zinc-600 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+          onClick={() => {
+            downloadCsv(csvFilename(widget.title), [{
+              timestamp: new Date().toISOString(),
+              value: Number(stat.toFixed(4)),
+              ...(widget.unit ? { unit: widget.unit } : {}),
+            }]);
+          }}
+        >
+          <Download className="h-3 w-3" aria-hidden />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -508,6 +541,22 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
     setEditingWidget(null);
   }
 
+  /** Imports a dashboard JSON file as a NEW page and switches to it. */
+  async function handleImportPage(file: File): Promise<void> {
+    setError(null);
+    try {
+      const page = await importPageJson(tenantId, file);
+      const payload = await listPages(tenantId);
+      setPages(payload.pages);
+      const imported = payload.pages.find((p) => p.id === page.id) ?? null;
+      if (imported !== null) {
+        setActivePageId(page.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
+    }
+  }
+
   function applyWidgetDefaults(nextKind: WidgetKind): void {
     const defaults = WIDGET_DEFAULTS[nextKind];
     setKind(nextKind);
@@ -815,6 +864,38 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               >
                 <RefreshCw className="h-3 w-3" aria-hidden />
               </button>
+              <button
+                type="button"
+                data-testid="export-page"
+                aria-label="Export page as JSON"
+                title="Download this page (layout + widgets) as a JSON file you can import elsewhere"
+                className="rounded p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
+                onClick={() => {
+                  if (activePage === null) return;
+                  void exportPageJson(activePage, widgets);
+                }}
+              >
+                <FileDown className="h-3 w-3" aria-hidden />
+              </button>
+              <label
+                title="Import a dashboard JSON file as a new page"
+                className="cursor-pointer rounded p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
+              >
+                <FileUp className="h-3 w-3" aria-hidden />
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  aria-label="Import page JSON"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = ""; // allow re-importing the same file
+                    if (file !== undefined) {
+                      void handleImportPage(file);
+                    }
+                  }}
+                />
+              </label>
               <select
                 aria-label="Refresh every"
                 value={activePage.refresh_seconds ?? 15}

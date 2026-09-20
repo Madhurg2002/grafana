@@ -17,7 +17,8 @@ import { listPages, listWidgets, type WidgetKind } from "../db/schema.js";
 import { DEFAULT_PUBLIC_QUERIES } from "../services/publicQueries.js";
 import { sendShareInvite } from "../services/email.js";
 import { signViewToken, verifyViewToken, viewTokenEmail } from "../services/shareTokens.js";
-import { issueTenantToken, resolveSession } from "../middleware/auth.js";
+import { issueTenantToken, resolveSession, type AuthedRequest } from "../middleware/auth.js";
+import { recordAudit } from "../services/audit.js";
 
 const accessSchema = z.enum([
   "anyone_view",
@@ -192,6 +193,22 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       skipped = emailResult.skipped.length > 0 ? emailResult.skipped : emailResult.failed;
     }
 
+    void recordAudit(
+      {
+        tenantId,
+        action: "share.create",
+        target: link.label ?? "dashboard",
+        details: { shareId: link.id, access: link.access, invitedCount: invited.length },
+      },
+      (() => {
+        const authed = request as AuthedRequest;
+        return {
+          ...(authed.userId !== undefined ? { userId: authed.userId } : {}),
+          ...(authed.email !== undefined ? { email: authed.email } : {}),
+        };
+      })()
+    );
+
     return reply.code(201).send({
       id: link.id,
       url: `/share/${link.id}`,
@@ -241,6 +258,20 @@ export async function shareRoutes(app: FastifyInstance): Promise<void> {
       return reply;
     }
     const revoked = await revokeShareLink(request.params.id, user.sub);
+    if (revoked) {
+      const link = await getShareLink(request.params.id);
+      if (link !== null) {
+        void recordAudit(
+          {
+            tenantId: link.tenant_id,
+            action: "share.revoke",
+            target: link.label ?? "dashboard",
+            details: { shareId: request.params.id },
+          },
+          { userId: user.sub, email: user.email }
+        );
+      }
+    }
     return reply.code(revoked ? 200 : 404).send({ revoked });
   });
 

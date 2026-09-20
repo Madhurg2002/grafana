@@ -1,5 +1,6 @@
 import { getCircuitBreaker, CircuitOpenError } from "./circuitBreaker.js";
 import { instantQuery, type PromResultValue } from "./prometheus.js";
+import type { AlertEvent } from "./alertEvaluator.js";
 
 /**
  * Single-poll SSE fan-out engine (docs/skills.md §4).
@@ -77,6 +78,25 @@ class SseBroadcaster {
         stream.interval = null;
       }
       this.tenants.delete(tenantId);
+    }
+  }
+
+  /**
+   * Fan an alert state transition out to every connected client of the
+   * tenant as an `event: alert` SSE frame (real-time firing badge).
+   */
+  public broadcastAlert(event: AlertEvent): void {
+    const stream = this.tenants.get(event.tenantId);
+    if (stream === undefined) {
+      return;
+    }
+    const frame = JSON.stringify(event);
+    for (const client of stream.clients.values()) {
+      try {
+        client(`event: alert\ndata: ${frame}\n\n`);
+      } catch {
+        // Broken pipe — the close handler will clean the client up.
+      }
     }
   }
 

@@ -13,6 +13,7 @@ import { ConnectForm } from "../src/components/ConnectForm";
 import { DashboardView } from "../src/components/DashboardView";
 import { AuthProvider } from "../src/hooks/useAuth";
 import { instantQuery } from "../src/lib/api";
+import { csvFilename } from "../src/lib/csv";
 import type { MetricSeries } from "../src/hooks/types";
 
 // jsdom lacks EventSource — stub it.
@@ -132,6 +133,79 @@ describe("SparkLineCard", () => {
   it("formats tooltip values without raw floating-point noise", () => {
     expect(formatMetricValue(50.73333333333333)).toBe("50.73");
     expect(formatMetricValue(1333.333, "bytes/s")).toBe("1.3 KB/s");
+  });
+
+  it("offers a CSV download when series data exists (none when empty)", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:csv-test"),
+      revokeObjectURL: vi.fn(),
+    });
+    const clickSpy = vi.fn();
+    const originalCreate = document.createElement.bind(document);
+    const anchors: HTMLAnchorElement[] = [];
+    vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
+      const el = originalCreate(tag);
+      if (tag === "a") {
+        (el as HTMLAnchorElement).click = clickSpy;
+        anchors.push(el as HTMLAnchorElement);
+      }
+      return el;
+    }) as typeof document.createElement);
+
+    const { rerender } = render(
+      <SparkLineCard title="Network RX" unit="bytes/s" series={[]} stroke="#34d399" />
+    );
+    expect(screen.queryByTestId("sparkline-csv")).toBeNull(); // empty → hidden
+
+    rerender(<SparkLineCard title="Network RX" unit="bytes/s" series={series} stroke="#34d399" />);
+    expect(screen.getByTestId("sparkline-csv")).toBeTruthy();
+    await user.click(screen.getByTestId("sparkline-csv"));
+    expect(clickSpy).toHaveBeenCalled();
+    expect(anchors[0]?.download).toContain("Network-RX");
+    vi.restoreAllMocks();
+  });
+});
+
+describe("CSV helper", () => {
+  it("escapes commas, quotes and newlines per RFC 4180", async () => {
+    type CsvRow = Record<string, string | number>;
+    let captured = "";
+    const OriginalBlob = globalThis.Blob;
+    const blobCtor = vi.fn((parts: BlobPart[], opts?: BlobPropertyBag) => {
+      captured = String(parts[0] ?? "");
+      return new OriginalBlob(parts, opts);
+    });
+    vi.stubGlobal("Blob", blobCtor);
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: vi.fn(() => "blob:x"),
+      revokeObjectURL: vi.fn(),
+    });
+    const originalCreate = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((tag: string) => {
+      const el = originalCreate(tag);
+      if (tag === "a") {
+        (el as HTMLAnchorElement).click = vi.fn();
+      }
+      return el;
+    }) as typeof document.createElement);
+    const { downloadCsv: realDownload } = await import("../src/lib/csv");
+    realDownload("t", [
+      { label: "a,b", note: 'say "hi"' },
+      { label: "line\nbreak", note: 3 },
+    ] as unknown as CsvRow[]);
+    expect(captured).toContain('"a,b"');
+    expect(captured).toContain('"say ""hi"""');
+    expect(captured).toContain('"line\nbreak"');
+    expect(captured.split("\n")[0]).toBe("label,note");
+    vi.restoreAllMocks();
+  });
+
+  it("builds a safe, timestamped filename from a widget title", () => {
+    expect(csvFilename("CPU / memory (avg)")).toMatch(/^CPU-memory-avg-\d{4}-\d{2}-\d{2}$/);
+    expect(csvFilename("###")).toMatch(/^widget-\d{4}-\d{2}-\d{2}$/);
   });
 });
 

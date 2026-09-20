@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Building2,
   ExternalLink,
+  History,
   KeyRound,
   Link2,
   Inbox,
@@ -16,6 +17,7 @@ import {
   changePassword,
   createOrg,
   detachTenantFromOrg,
+  fetchActivity,
   fetchProfileShares,
   joinOrg,
   listOrgMembers,
@@ -23,6 +25,7 @@ import {
   revokeShareLink,
   rotateInviteCode,
   updateProfile,
+  type ActivityEntry,
   type OrgMember,
   type OrgSummary,
   type ProfileShare,
@@ -59,6 +62,27 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
   const [orgBusy, setOrgBusy] = useState(false);
   const [orgMessage, setOrgMessage] = useState<string | null>(null);
   const [orgError, setOrgError] = useState<string | null>(null);
+
+  // Workspace activity (audit trail) — loaded lazily on first expand.
+  const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
+
+  useEffect(() => {
+    if (!activityOpen || activity !== null || user === null) {
+      return;
+    }
+    let cancelled = false;
+    fetchActivity(user.tenantId)
+      .then((payload) => {
+        if (!cancelled) setActivity(payload.activity);
+      })
+      .catch(() => {
+        if (!cancelled) setActivity([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activityOpen, activity, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,6 +275,21 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
       .catch(() => {
         setError("Clipboard unavailable — copy the URL from the address bar");
       });
+  }
+
+  /** One-line human description of an audit action for the Activity list. */
+  function describeActivity(entry: ActivityEntry): string {
+    const [scope = "", verb = ""] = entry.action.split(".");
+    const noun = { widget: "widget", page: "dashboard page", connection: "connection", alert: "alert", share: "share link" }[scope] ?? scope;
+    const verbs: Record<string, string> = {
+      create: "created a",
+      update: "edited a",
+      delete: "deleted a",
+      reorder: "reordered",
+      activate: "switched the active",
+      revoke: "revoked a",
+    };
+    return `${verbs[verb] ?? verb} ${noun}`.trim();
   }
 
   const accessBadge = (access: ProfileShare["access"]): JSX.Element => {
@@ -536,6 +575,57 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
             {error}
           </p>
         ) : null}
+
+        {/* Workspace activity: who changed what (audit trail). */}
+        <section className="mt-8" data-testid="activity-section">
+          <button
+            type="button"
+            onClick={() => setActivityOpen((open) => !open)}
+            title="Who created, edited, or deleted dashboards, widgets, connections, alerts, and shares — newest first"
+            className="flex w-full items-center gap-2 text-sm font-semibold text-zinc-200"
+          >
+            <History className="h-4 w-4 text-emerald-300" aria-hidden />
+            Activity
+            <span className="text-xs font-normal text-zinc-500">
+              who changed what in your workspace
+            </span>
+            <span className="ml-auto text-xs text-zinc-500">{activityOpen ? "Hide" : "Show"}</span>
+          </button>
+          {activityOpen ? (
+            activity === null ? (
+              <p className="mt-2 text-sm text-zinc-500">Loading activity…</p>
+            ) : activity.length === 0 ? (
+              <p className="mt-2 rounded-xl border border-dashed border-zinc-800 px-4 py-4 text-center text-xs text-zinc-500">
+                No changes recorded yet — edits to dashboards, connections, alerts, and shares will appear here.
+              </p>
+            ) : (
+              <ul className="mt-2 divide-y divide-zinc-800/70 overflow-hidden rounded-xl border border-zinc-800/80">
+                {activity.map((entry) => (
+                  <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs text-zinc-200">
+                        <span className="font-medium text-zinc-100">
+                          {entry.actorEmail ?? "A share link"}
+                        </span>{" "}
+                        {describeActivity(entry)}
+                      </p>
+                      {entry.target !== null ? (
+                        <p className="mt-0.5 truncate text-[11px] text-zinc-500">“{entry.target}”</p>
+                      ) : null}
+                    </div>
+                    <time
+                      dateTime={entry.createdAt}
+                      title={new Date(entry.createdAt).toLocaleString()}
+                      className="text-[11px] text-zinc-600"
+                    >
+                      {new Date(entry.createdAt).toLocaleString()}
+                    </time>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : null}
+        </section>
 
         {loading ? (
           <p className="mt-8 text-sm text-zinc-500">Loading shares…</p>

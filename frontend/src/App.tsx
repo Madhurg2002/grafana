@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Radio } from "lucide-react";
+import { BellRing, Radio } from "lucide-react";
 import { motion } from "framer-motion";
 import { AuthForm } from "./components/AuthForm";
 import { ConnectForm } from "./components/ConnectForm";
@@ -8,6 +8,19 @@ import { ShareView } from "./components/ShareView";
 import { ProfileView } from "./components/ProfileView";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { fetchConnectionInfo, type ConnectionInfo } from "./lib/api";
+
+/** Window event the SSE hook fires on every alert transition (firing/resolved). */
+export const ALERT_EVENT = "passthrough:alert";
+
+interface HeaderAlert {
+  alertId: number;
+  title: string;
+  state: "firing" | "resolved";
+  value: number | null;
+  threshold: number;
+  comparator: string;
+  firedAt: string;
+}
 
 type Route =
   | { name: "home" }
@@ -43,6 +56,32 @@ function SignedInApp(): JSX.Element {
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
   const [connectionChecked, setConnectionChecked] = useState(false);
   const [route, setRoute] = useState<Route>(parseRoute);
+  // Live firing-alert badge: the SSE hook broadcasts transitions on the
+  // window; firing adds, resolved removes.
+  const [firingAlerts, setFiringAlerts] = useState<Map<number, HeaderAlert>>(new Map());
+  const [alertsOpen, setAlertsOpen] = useState(false);
+
+  useEffect(() => {
+    function onAlert(event: Event): void {
+      const alert = (event as CustomEvent<HeaderAlert>).detail;
+      if (alert === undefined || typeof alert.alertId !== "number") {
+        return;
+      }
+      setFiringAlerts((prev) => {
+        const next = new Map(prev);
+        if (alert.state === "firing") {
+          next.set(alert.alertId, alert);
+        } else {
+          next.delete(alert.alertId);
+        }
+        return next;
+      });
+    }
+    window.addEventListener(ALERT_EVENT, onAlert);
+    return () => {
+      window.removeEventListener(ALERT_EVENT, onAlert);
+    };
+  }, []);
 
   // Track URL changes (Profile link, back/forward) inside the signed-in app.
   useEffect(() => {
@@ -112,6 +151,49 @@ function SignedInApp(): JSX.Element {
             Passthrough
           </button>
           <div className="flex items-center gap-3">
+            {firingAlerts.size > 0 ? (
+              <div className="relative">
+                <button
+                  type="button"
+                  data-testid="alerts-badge"
+                  title={
+                    Array.from(firingAlerts.values())
+                      .map((a) => `${a.title} — ${a.value ?? "no data"} ${a.comparator} ${a.threshold}`)
+                      .join("\n") || "Alerts firing"
+                  }
+                  aria-label={`${firingAlerts.size} alert${firingAlerts.size === 1 ? "" : "s"} firing`}
+                  onClick={() => setAlertsOpen((open) => !open)}
+                  className="flex items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-xs text-rose-300 transition hover:bg-rose-500/20"
+                >
+                  <BellRing className="h-3.5 w-3.5 animate-pulse" aria-hidden />
+                  {firingAlerts.size}
+                </button>
+                {alertsOpen ? (
+                  <div
+                    className="absolute right-0 z-30 mt-2 w-72 rounded-xl border border-zinc-800 bg-zinc-950 p-3 shadow-xl"
+                    role="dialog"
+                    aria-label="Firing alerts"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-wide text-rose-300">
+                      Firing now
+                    </p>
+                    <ul className="mt-2 flex max-h-64 flex-col gap-2 overflow-y-auto">
+                      {Array.from(firingAlerts.values()).map((alert) => (
+                        <li key={alert.alertId} className="rounded-lg border border-zinc-800/80 px-2.5 py-2">
+                          <p className="text-xs font-medium text-zinc-200">{alert.title}</p>
+                          <p className="mt-0.5 font-mono text-[10px] text-zinc-500">
+                            {alert.value !== null ? Number(alert.value.toFixed(3)) : "no data"} {alert.comparator} {alert.threshold} · since {new Date(alert.firedAt).toLocaleTimeString()}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-[10px] text-zinc-600">
+                      Manage rules in the dashboard's Alerts section.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={() => navigate("/profile")}

@@ -7,7 +7,9 @@ import {
   YAxis,
 } from "recharts";
 import { motion } from "framer-motion";
+import { Download } from "lucide-react";
 import type { MetricSeries } from "../hooks/types";
+import { csvFilename, downloadCsv } from "../lib/csv";
 
 export interface SparkLineCardProps {
   title: string;
@@ -16,6 +18,34 @@ export interface SparkLineCardProps {
   stroke: string;
   /** The PromQL behind this card — surfaced as a hover formula tooltip. */
   query?: string;
+}
+
+/** Flattens series rows into timestamp×label CSV rows and downloads them. */
+function exportSeriesCsv(
+  title: string,
+  series: MetricSeries[],
+  unit?: string
+): void {
+  const labels = series.map((s, i) => (s.label === "series" ? `series_${i}` : s.label));
+  const timestamps = Array.from(
+    new Set(series.flatMap((s) => s.points.map((p) => p.timestamp)))
+  ).sort((a, b) => a - b);
+  const byTs = new Map<number, Record<string, string | number>>();
+  for (const ts of timestamps) {
+    byTs.set(ts, {
+      timestamp: new Date(ts).toISOString(),
+      ...(unit !== undefined && unit.length > 0 ? { unit } : {}),
+    });
+  }
+  series.forEach((s, i) => {
+    for (const point of s.points) {
+      const row = byTs.get(point.timestamp);
+      if (row !== undefined) {
+        row[labels[i] ?? `series_${i}`] = point.value;
+      }
+    }
+  });
+  downloadCsv(csvFilename(title), Array.from(byTs.values()));
 }
 
 function formatBytes(value: number): string {
@@ -80,8 +110,22 @@ export function SparkLineCard({
         >
           {title}
         </span>
-        <span className="text-sm font-medium tabular-nums text-zinc-200">
-          {formatMetricValue(latest, unit)}
+        <span className="flex items-center gap-2">
+          <span className="text-sm font-medium tabular-nums text-zinc-200">
+            {formatMetricValue(latest, unit)}
+          </span>
+          {series.length > 0 ? (
+            <button
+              type="button"
+              data-testid="sparkline-csv"
+              title="Download this series as CSV"
+              aria-label={`Download ${title} as CSV`}
+              className="rounded p-1 text-zinc-600 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+              onClick={() => exportSeriesCsv(title, series, unit)}
+            >
+              <Download className="h-3 w-3" aria-hidden />
+            </button>
+          ) : null}
         </span>
       </div>
       <div className="mt-3 h-28">

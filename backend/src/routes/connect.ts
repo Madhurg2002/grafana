@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import { requireTenantAccess, issueTenantToken } from "../middleware/auth.js";
+import { requireTenantAccess, issueTenantToken, type AuthedRequest } from "../middleware/auth.js";
+import type { FastifyRequest } from "fastify";
 import { encryptToken } from "../db/encryption.js";
 import {
   upsertTenant,
@@ -30,6 +31,16 @@ import {
 import { normalizePromQL } from "../services/prometheus.js";
 import { getEnv } from "../config/env.js";
 import { detectUpstream } from "../services/upstream.js";
+import { recordAudit } from "../services/audit.js";
+
+/** Actor attribution for the audit trail (verified session only). */
+function auditActor(request: FastifyRequest): { userId?: string; email?: string } {
+  const authed = request as AuthedRequest;
+  return {
+    ...(authed.userId !== undefined ? { userId: authed.userId } : {}),
+    ...(authed.email !== undefined ? { email: authed.email } : {}),
+  };
+}
 
 const connectSchema = z.object({
   tenantId: z.string().min(1).max(128),
@@ -256,6 +267,10 @@ app.post<{ Params: { tenantId: string; id: string } }>(
     if (activated === null) {
       return reply.code(404).send({ error: "Connection not found for this tenant" });
     }
+    void recordAudit(
+      { tenantId: request.params.tenantId, action: "connection.activate", target: activated.label ?? "default", details: { connectionId: activated.id } },
+      auditActor(request)
+    );
     return reply.code(200).send({
       activated: true,
       id: activated.id,
@@ -303,6 +318,10 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
       if (updated === null) {
         return reply.code(404).send({ error: "Connection not found for this tenant" });
       }
+      void recordAudit(
+        { tenantId: tenantId.data, action: "connection.update", target: updated.label ?? "default", details: { connectionId: updated.id, fields: ["label"] } },
+        auditActor(request)
+      );
       return reply.code(200).send({
         connection: {
           id: updated.id,
@@ -353,6 +372,10 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
       if (updated === null) {
         return reply.code(404).send({ error: "Connection not found for this tenant" });
       }
+      void recordAudit(
+        { tenantId: tenantId.data, action: "connection.update", target: updated.label ?? "default", details: { connectionId: updated.id, fields: Object.keys(patch) } },
+        auditActor(request)
+      );
       return reply.code(200).send({
         connection: {
           id: updated.id,
@@ -554,6 +577,10 @@ app.post<{ Params: { tenantId: string; pageId: string }; Body: unknown }>(
       unit: parsed.data.unit ?? null,
       span: parsed.data.span ?? 1,
     });
+    void recordAudit(
+      { tenantId: tenantId.data, action: "widget.create", target: widget.title, details: { widgetId: widget.id, kind, pageId: pageId.data } },
+      auditActor(request)
+    );
     return reply.code(201).send({ widget });
   }
 );
@@ -586,6 +613,10 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
     if (updated === null) {
       return reply.code(404).send({ error: "Widget not found" });
     }
+    void recordAudit(
+      { tenantId: tenantId.data, action: "widget.update", target: updated.title, details: { widgetId: updated.id, fields: Object.keys(parsed.data) } },
+      auditActor(request)
+    );
     return reply.code(200).send({ widget: updated });
   }
 );
@@ -603,6 +634,12 @@ app.delete<{ Params: { tenantId: string; id: string } }>(
       return reply; // 401/403 already sent
     }
     const removed = await deleteWidget(tenantId.data, id.data);
+    if (removed) {
+      void recordAudit(
+        { tenantId: tenantId.data, action: "widget.delete", details: { widgetId: id.data } },
+        auditActor(request)
+      );
+    }
     return reply.code(removed ? 200 : 404).send({ removed });
   }
 );
@@ -624,6 +661,12 @@ app.post<{ Params: { tenantId: string; pageId: string }; Body: unknown }>(
       return reply.code(400).send({ error: "Invalid positions" });
     }
     const ok = await reorderWidgets(tenantId.data, pageId.data, parsed.data.positions);
+    if (ok) {
+      void recordAudit(
+        { tenantId: tenantId.data, action: "widget.reorder", details: { pageId: pageId.data, count: parsed.data.positions.length } },
+        auditActor(request)
+      );
+    }
     return reply.code(ok ? 200 : 404).send({ ok });
   }
 );
@@ -724,6 +767,10 @@ app.post<{ Params: { tenantId: string }; Body: unknown }>(
       parsed.data.name.trim(),
       parsed.data.showBuiltins ?? true
     );
+    void recordAudit(
+      { tenantId: tenantId.data, action: "page.create", target: page.name, details: { pageId: page.id } },
+      auditActor(request)
+    );
     return reply.code(201).send({ page });
   }
 );
@@ -744,6 +791,12 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
       return reply.code(400).send({ error: "Invalid page name" });
     }
     const ok = await renamePage(tenantId.data, id.data, parsed.data.name.trim());
+    if (ok) {
+      void recordAudit(
+        { tenantId: tenantId.data, action: "page.update", target: parsed.data.name.trim(), details: { pageId: id.data, change: "rename" } },
+        auditActor(request)
+      );
+    }
     return reply.code(ok ? 200 : 404).send({ ok });
   }
 );
@@ -760,6 +813,12 @@ app.delete<{ Params: { tenantId: string; id: string } }>(
       return reply; // 401/403 already sent
     }
     const ok = await deletePage(tenantId.data, id.data);
+    if (ok) {
+      void recordAudit(
+        { tenantId: tenantId.data, action: "page.delete", details: { pageId: id.data } },
+        auditActor(request)
+      );
+    }
     return reply.code(ok ? 200 : 404).send({ ok });
   }
 );

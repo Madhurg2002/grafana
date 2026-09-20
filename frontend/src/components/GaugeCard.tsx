@@ -1,5 +1,6 @@
 import { PolarAngleAxis, RadialBar, RadialBarChart, ResponsiveContainer } from "recharts";
 import { motion } from "framer-motion";
+import { Download } from "lucide-react";
 import { LEVEL_STYLES, type StatusLevel } from "./StatusCard";
 
 const LEVEL_COLORS: Record<StatusLevel, string> = {
@@ -14,6 +15,8 @@ export interface GaugeCardProps {
   level: StatusLevel;
   /** The PromQL behind this gauge — surfaced as a hover formula tooltip. */
   query?: string;
+  /** Fires when the user downloads this gauge's current value as CSV. */
+  onExportCsv?: (title: string, percent: number) => void;
 }
 
 function levelFor(percent: number): StatusLevel {
@@ -22,7 +25,7 @@ function levelFor(percent: number): StatusLevel {
   return "emerald";
 }
 
-export function GaugeCard({ title, percent, level, query }: GaugeCardProps): JSX.Element {
+export function GaugeCard({ title, percent, level, query, onExportCsv }: GaugeCardProps): JSX.Element {
   const resolved = level ?? levelFor(percent);
   const clamped = Math.max(0, Math.min(100, percent));
   const data = [{ name: title, value: clamped, fill: LEVEL_COLORS[resolved] }];
@@ -36,12 +39,26 @@ export function GaugeCard({ title, percent, level, query }: GaugeCardProps): JSX
       className={`glass-card p-4 ${chrome.border} ${chrome.shadow}`}
       data-testid="gauge-card"
     >
-      <span
-        className="block truncate text-xs uppercase tracking-wider text-zinc-400"
-        title={query !== undefined ? `${title} — ${query}` : title}
-      >
-        {title}
-      </span>
+      <div className="flex items-center justify-between">
+        <span
+          className="block truncate text-xs uppercase tracking-wider text-zinc-400"
+          title={query !== undefined ? `${title} — ${query}` : title}
+        >
+          {title}
+        </span>
+        {onExportCsv !== undefined ? (
+          <button
+            type="button"
+            data-testid="gauge-csv"
+            title="Download this gauge's current value as CSV"
+            aria-label={`Download ${title} as CSV`}
+            className="rounded p-1 text-zinc-600 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+            onClick={() => onExportCsv(title, clamped)}
+          >
+            <Download className="h-3 w-3" aria-hidden />
+          </button>
+        ) : null}
+      </div>
       <div className="relative mt-2 h-28 w-[70%] mx-auto">
         <ResponsiveContainer width="100%" height="100%">
           <RadialBarChart

@@ -1,6 +1,6 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { requireTenantAccess } from "../middleware/auth.js";
+import { requireTenantAccess, type AuthedRequest } from "../middleware/auth.js";
 import {
   createAlert,
   deleteAlert,
@@ -8,6 +8,16 @@ import {
   updateAlertEnabled,
   type AlertComparator,
 } from "../db/schema.js";
+import { recordAudit } from "../services/audit.js";
+
+/** Actor attribution for the audit trail (verified session only). */
+function auditActor(request: FastifyRequest): { userId?: string; email?: string } {
+  const authed = request as AuthedRequest;
+  return {
+    ...(authed.userId !== undefined ? { userId: authed.userId } : {}),
+    ...(authed.email !== undefined ? { email: authed.email } : {}),
+  };
+}
 
 /**
  * Threshold alerts API (migration 011 + services/alertEvaluator.ts).
@@ -67,6 +77,10 @@ export async function alertRoutes(app: FastifyInstance): Promise<void> {
         forSeconds: parsed.data.forSeconds,
         webhookUrl: parsed.data.webhookUrl,
       });
+      void recordAudit(
+        { tenantId: tenantId.data, action: "alert.create", target: alert.title, details: { alertId: alert.id, comparator: alert.comparator, threshold: alert.threshold } },
+        auditActor(request)
+      );
       return reply.code(201).send({ alert });
     }
   );
@@ -87,6 +101,12 @@ export async function alertRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(400).send({ error: "Invalid body" });
       }
       const ok = await updateAlertEnabled(tenantId.data, id.data, parsed.data.enabled);
+      if (ok) {
+        void recordAudit(
+          { tenantId: tenantId.data, action: "alert.update", details: { alertId: id.data, enabled: parsed.data.enabled } },
+          auditActor(request)
+        );
+      }
       return reply.code(ok ? 200 : 404).send({ ok });
     }
   );
@@ -103,6 +123,12 @@ export async function alertRoutes(app: FastifyInstance): Promise<void> {
         return reply;
       }
       const removed = await deleteAlert(tenantId.data, id.data);
+      if (removed) {
+        void recordAudit(
+          { tenantId: tenantId.data, action: "alert.delete", details: { alertId: id.data } },
+          auditActor(request)
+        );
+      }
       return reply.code(removed ? 200 : 404).send({ removed });
     }
   );

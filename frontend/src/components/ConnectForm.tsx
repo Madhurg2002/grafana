@@ -177,6 +177,21 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
         {submitting ? "Connecting…" : "Connect"}
       </button>
 
+      {!failedOnce ? (
+        <button
+          type="button"
+          data-testid="demo-connect"
+          title="Fill in the public demo Prometheus — real live metrics, nothing to install"
+          className="mt-2 w-full text-center text-xs text-zinc-500 underline-offset-2 transition hover:text-zinc-300 hover:underline"
+          onClick={() => {
+            setPrometheusUrl("https://prometheus.demo.prometheus.io");
+            setAuthToken("");
+          }}
+        >
+          No URL handy? Explore with the public demo Prometheus
+        </button>
+      ) : null}
+
       {failedOnce ? (
         <button
           type="button"
