@@ -9,6 +9,7 @@ import {
   listConnections,
   activateConnection,
   deleteConnection,
+  updateConnection,
   listPanels,
   createPanel,
   deletePanel,
@@ -260,6 +261,116 @@ app.post<{ Params: { tenantId: string; id: string } }>(
       id: activated.id,
       label: activated.label ?? "default",
     });
+  }
+);
+
+/** PATCH /api/connections/:tenantId/:id — edit label, URL, or token in place. */
+const connectionPatchSchema = z
+  .object({
+    label: z.string().min(1).max(64).regex(/^[a-zA-Z0-9-_ ]+$/).optional(),
+    /** New upstream URL — probed (detect + /api/v1/query) before persisting. */
+    prometheusUrl: z.string().min(1).max(2048).optional(),
+    /** Replacement bearer token; empty string clears the stored token. */
+    authToken: z.string().max(4096).optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: "Empty patch" });
+
+app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
+  "/api/connections/:tenantId/:id",
+  async (request, reply) => {
+    const tenantId = z.string().min(1).max(128).safeParse(request.params.tenantId);
+    const id = z.coerce.number().int().positive().safeParse(request.params.id);
+    if (!tenantId.success || !id.success) {
+      return reply.code(400).send({ error: "Invalid tenantId or connection id" });
+    }
+    if (!(await requireTenantAccess(request, reply, tenantId.data))) {
+      return reply; // 401/403 already sent
+    }
+    const parsed = connectionPatchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "Invalid connection patch",
+        details: parsed.error.issues.map((i) => ({
+          path: i.path.join("."),
+          message: i.message,
+        })),
+      });
+    }
+    const patch = parsed.data;
+    // Relabel-only patches skip the upstream probe entirely.
+    if (patch.prometheusUrl === undefined && patch.authToken === undefined) {
+      const updated = await updateConnection(tenantId.data, id.data, { label: patch.label });
+      if (updated === null) {
+        return reply.code(404).send({ error: "Connection not found for this tenant" });
+      }
+      return reply.code(200).send({
+        connection: {
+          id: updated.id,
+          label: updated.label ?? "default",
+          status: updated.status,
+          upstreamType: updated.upstream_type ?? "prometheus",
+          upstreamHost: safeHost(updated.prometheus_url),
+          isActive: updated.is_active ?? false,
+          hasToken: updated.auth_token_encrypted !== null,
+          updatedAt: updated.updated_at,
+        },
+      });
+    }
+
+    // URL/token change: re-detect and probe the upstream first so a broken
+    // edit never silently takes the active connection offline.
+    const targetUrl = patch.prometheusUrl;
+    try {
+      const detection = await detectUpstream(targetUrl ?? "", {
+        authToken: patch.authToken,
+      });
+      const probeHeaders: Record<string, string> = { accept: "application/json" };
+      if (patch.authToken !== undefined && patch.authToken.length > 0) {
+        probeHeaders.authorization = `Bearer ${patch.authToken}`;
+      }
+      const probe = await fetch(`${detection.queryBaseUrl}/api/v1/query?query=up`, {
+        headers: probeHeaders,
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!probe.ok) {
+        return reply.code(502).send({
+          error: `Upstream /api/v1/query responded ${probe.status} — connection not updated`,
+        });
+      }
+      const encrypted =
+        patch.authToken !== undefined && patch.authToken.length > 0
+          ? encryptToken(patch.authToken, getEnv().ENCRYPTION_KEY)
+          : patch.authToken !== undefined
+            ? null // empty string = explicit token removal
+            : undefined; // token untouched
+      const updated = await updateConnection(tenantId.data, id.data, {
+        ...(patch.label !== undefined ? { label: patch.label } : {}),
+        prometheusUrl: detection.queryBaseUrl,
+        authTokenEncrypted: encrypted,
+        status: "connected",
+        upstreamType: detection.type,
+      });
+      if (updated === null) {
+        return reply.code(404).send({ error: "Connection not found for this tenant" });
+      }
+      return reply.code(200).send({
+        connection: {
+          id: updated.id,
+          label: updated.label ?? "default",
+          status: updated.status,
+          upstreamType: updated.upstream_type ?? "prometheus",
+          upstreamHost: safeHost(updated.prometheus_url),
+          isActive: updated.is_active ?? false,
+          hasToken: updated.auth_token_encrypted !== null,
+          updatedAt: updated.updated_at,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Upstream detection failed";
+      return reply.code(502).send({
+        error: `Could not reach the new upstream — connection not updated (${message})`,
+      });
+    }
   }
 );
 

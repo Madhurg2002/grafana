@@ -483,6 +483,36 @@ export function deleteConnection(tenantId: string, id: number): Promise<{ remove
   );
 }
 
+/** Edits a stored connection in place (label and/or URL/token rotation). */
+export interface ConnectionPatch {
+  label?: string;
+  prometheusUrl?: string;
+  /** Replacement bearer token; empty string clears the stored token. */
+  authToken?: string;
+}
+
+export function updateConnection(
+  tenantId: string,
+  id: number,
+  patch: ConnectionPatch
+): Promise<{ connection: ConnectionSummary }> {
+  return authedJson<{ connection: ConnectionSummary }>(
+    `/api/connections/${encodeURIComponent(tenantId)}/${id}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...(patch.label !== undefined && patch.label.trim().length > 0
+          ? { label: patch.label.trim() }
+          : {}),
+        ...(patch.prometheusUrl !== undefined && patch.prometheusUrl.trim().length > 0
+          ? { prometheusUrl: patch.prometheusUrl.trim() }
+          : {}),
+        ...(patch.authToken !== undefined ? { authToken: patch.authToken } : {}),
+      }),
+    }
+  );
+}
+
 export function connectWithLabel(
   tenantId: string,
   prometheusUrl: string,

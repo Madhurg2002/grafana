@@ -97,15 +97,20 @@ const WIDGET_DEFAULTS: Record<WidgetKind, { title: string; promql: string; unit:
  * Maps a widget's grid span to responsive classes. In wide mode the grid is
  * 6 columns at 2xl (1536px+) and up, so a very large monitor shows a very
  * large number of charts at once (wall-of-graphs like Grafana's TV view).
+ *
+ * Span 1 (gauges/stats) is deliberately HALF a normal column: a dial or a
+ * single number needs far less room than a sparkline, so it renders at half
+ * the width a same-span sparkline would take (2 of 6 cols in wide mode,
+ * 2 of 4 in the narrow grid).
  */
 function spanClass(span: number, wide = false): string {
   if (span >= 3) {
-    return wide ? "col-span-1 md:col-span-2 2xl:col-span-3 3xl:col-span-6" : "col-span-1 2xl:col-span-3 xl:col-span-2";
+    return wide ? "col-span-2 md:col-span-2 2xl:col-span-6 3xl:col-span-6" : "col-span-2 2xl:col-span-4";
   }
   if (span === 2) {
-    return wide ? "col-span-1 md:col-span-2 2xl:col-span-2 3xl:col-span-4" : "col-span-1 2xl:col-span-2";
+    return wide ? "col-span-2 md:col-span-2 2xl:col-span-4 3xl:col-span-4" : "col-span-2 2xl:col-span-4";
   }
-  return wide ? "col-span-1 3xl:col-span-2" : "col-span-1";
+  return wide ? "col-span-2 2xl:col-span-2" : "col-span-2 2xl:col-span-2";
 }
 
 /**
@@ -1069,8 +1074,8 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
       ) : null}
 
       <div
-        className={`mt-3 grid grid-cols-1 gap-4 ${
-          wide ? "md:grid-cols-2 2xl:grid-cols-3 3xl:grid-cols-6" : "lg:grid-cols-2 2xl:grid-cols-3"
+        className={`mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 ${
+          wide ? "2xl:grid-cols-6" : "2xl:grid-cols-4"
         }`}
         data-testid="panel-grid"
       >

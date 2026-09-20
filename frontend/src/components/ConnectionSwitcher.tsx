@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronDown, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   activateConnection,
   connectWithLabel,
   deleteConnection,
   listConnections,
+  updateConnection,
   type ConnectionSummary,
 } from "../lib/api";
 
@@ -22,6 +23,10 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
   const [connections, setConnections] = useState<ConnectionSummary[]>([]);
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<ConnectionSummary | null>(null);
+  const [editLabel, setEditLabel] = useState("");
+  const [editUrl, setEditUrl] = useState("");
+  const [editToken, setEditToken] = useState("");
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [label, setLabel] = useState("");
@@ -72,6 +77,44 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
       onActiveChanged(switchLabel);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to switch");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startEdit(c: ConnectionSummary): void {
+    setEditing(c);
+    setEditLabel(c.label);
+    setEditUrl(""); // blank = keep the current upstream
+    setEditToken(""); // blank = keep the current token
+    setError(null);
+  }
+
+  function resetEdit(): void {
+    setEditing(null);
+    setEditLabel("");
+    setEditUrl("");
+    setEditToken("");
+  }
+
+  async function handleSaveEdit(): Promise<void> {
+    if (editing === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const urlChanged = editUrl.trim().length > 0;
+      const tokenChanged = editToken.length > 0;
+      const tokenCleared = editToken.trim() === "-";
+      await updateConnection(tenantId, editing.id, {
+        ...(editLabel.trim() !== editing.label ? { label: editLabel.trim() } : {}),
+        ...(urlChanged ? { prometheusUrl: editUrl.trim() } : {}),
+        ...(tokenChanged || tokenCleared ? { authToken: tokenCleared ? "" : editToken } : {}),
+      });
+      resetEdit();
+      await refresh();
+      onActiveChanged(editLabel.trim() || editing.label);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update connection");
     } finally {
       setBusy(false);
     }
@@ -129,12 +172,14 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
           onClick={() => {
             setOpen(false);
             setAdding(false);
+            resetEdit();
             setError(null);
           }}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setOpen(false);
               setAdding(false);
+              resetEdit();
               setError(null);
             }
           }}
@@ -200,6 +245,18 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                   </button>
                   <button
                     type="button"
+                    aria-label={`Edit connection ${c.label}`}
+                    title="Edit this connection — rename it, change the URL, or rotate the token"
+                    className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
+                    disabled={busy}
+                    onClick={() => {
+                      startEdit(c);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
                     aria-label={`Delete connection ${c.label}`}
                     title="Remove this connection — dashboards fall back to any other stored upstream"
                     className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
@@ -216,7 +273,82 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
           )}
           </div>
 
-          {adding ? (
+          {editing !== null ? (
+            <div className="flex flex-col gap-2.5 border-t border-zinc-800 px-1 pt-3">
+              <p className="text-xs font-semibold text-zinc-300">
+                Edit “{editing.label}”
+              </p>
+              <div>
+                <input
+                  value={editLabel}
+                  onChange={(e) => setEditLabel(e.target.value)}
+                  placeholder="Label"
+                  maxLength={64}
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                />
+                <p className="mt-0.5 text-[10px] text-zinc-600">
+                  A short name shown in this dropdown.
+                </p>
+              </div>
+              <div>
+                <input
+                  value={editUrl}
+                  onChange={(e) => setEditUrl(e.target.value)}
+                  type="text"
+                  inputMode="url"
+                  placeholder="New URL — leave blank to keep current"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                />
+                <p className="mt-0.5 text-[10px] text-zinc-600">
+                  Currently {editing.upstreamHost ?? "?"}. Changing it is probed
+                  before saving — the old upstream stays if the new one is unreachable.
+                </p>
+              </div>
+              <div>
+                <input
+                  value={editToken}
+                  onChange={(e) => setEditToken(e.target.value)}
+                  type="password"
+                  placeholder="New token — blank keeps, “-” clears"
+                  autoComplete="off"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                />
+                <p className="mt-0.5 text-[10px] text-zinc-600">
+                  {editing.hasToken
+                    ? "A token is stored (encrypted). Leave blank to keep it, type - to remove it."
+                    : "No token stored. Leave blank, or paste a bearer token."}
+                </p>
+              </div>
+              {error !== null ? (
+                <p className="text-[11px] text-rose-400" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  title="Save changes to this connection"
+                  className="flex-1 rounded-lg bg-emerald-500/90 px-2 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
+                  disabled={busy || editLabel.trim().length === 0}
+                  onClick={() => {
+                    void handleSaveEdit();
+                  }}
+                >
+                  {busy ? "Saving…" : "Save changes"}
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-zinc-800 px-2 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-600"
+                  onClick={() => {
+                    resetEdit();
+                    setError(null);
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : adding ? (
             <div className="flex flex-col gap-2.5 border-t border-zinc-800 px-1 pt-3">
               <div>
                 <input

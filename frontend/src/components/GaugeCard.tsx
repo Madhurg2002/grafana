@@ -33,7 +33,7 @@ export function GaugeCard({ title, percent, level, query }: GaugeCardProps): JSX
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3 }}
-      className={`glass-card p-5 ${chrome.border} ${chrome.shadow}`}
+      className={`glass-card p-4 ${chrome.border} ${chrome.shadow}`}
       data-testid="gauge-card"
     >
       <span
@@ -42,12 +42,13 @@ export function GaugeCard({ title, percent, level, query }: GaugeCardProps): JSX
       >
         {title}
       </span>
-      <div className="relative mt-2 h-36">
+      <div className="relative mt-2 h-28 w-[70%] mx-auto">
         <ResponsiveContainer width="100%" height="100%">
           <RadialBarChart
             data={data}
             innerRadius="72%"
             outerRadius="100%"
+            cy="100%"
             startAngle={180}
             endAngle={0}
             barSize={14}
@@ -61,9 +62,9 @@ export function GaugeCard({ title, percent, level, query }: GaugeCardProps): JSX
             <RadialBar background={{ fill: "#27272a" }} dataKey="value" cornerRadius={8} />
           </RadialBarChart>
         </ResponsiveContainer>
-        <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-1">
+        <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-0.5">
           <span
-            className="text-2xl font-semibold tabular-nums"
+            className="text-xl font-semibold tabular-nums"
             style={{ color: LEVEL_COLORS[resolved] }}
           >
             {clamped.toFixed(1)}%
