@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireTenantAccess } from "../middleware/auth.js";
 import { getSseBroadcaster } from "../services/sse.js";
+import { getAlertEvaluator } from "../services/alertEvaluator.js";
 import { getEnv } from "../config/env.js";
 
 const streamQuerySchema = z.object({
@@ -57,9 +58,17 @@ export async function streamRoutes(app: FastifyInstance): Promise<void> {
     const removeClient = broadcaster.addClient(tenantId, (payload) => {
       reply.raw.write(`event: health\ndata: ${payload}\n\n`);
     });
+    // Real-time alert transitions on the same connection — the health loop
+    // stays untouched; alerts only flow when the evaluator transitions a rule.
+    const removeAlertListener = getAlertEvaluator().onEvent((event) => {
+      if (event.tenantId === tenantId) {
+        broadcaster.broadcastAlert(event);
+      }
+    });
 
     // Clean up on socket close — critical to stop the per-tenant poll loop.
     request.raw.on("close", () => {
+      removeAlertListener();
       removeClient();
       try {
         reply.raw.end();

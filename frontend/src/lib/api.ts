@@ -419,6 +419,29 @@ export function fetchProfileShares(): Promise<{
   );
 }
 
+// ---------------------------------------------------------------------------
+// Audit trail (Profile → Activity)
+// ---------------------------------------------------------------------------
+
+export interface ActivityEntry {
+  id: number;
+  actorEmail: string | null;
+  action: string;
+  target: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/** Newest workspace activity (who created/edited/deleted what). */
+export function fetchActivity(
+  tenantId: string,
+  limit = 100
+): Promise<{ activity: ActivityEntry[] }> {
+  return authedJson<{ activity: ActivityEntry[] }>(
+    `/api/profile/activity?tenantId=${encodeURIComponent(tenantId)}&limit=${limit}`
+  );
+}
+
 export function fetchShareAccessToken(id: string): Promise<{
   token: string;
   editToken?: string;
@@ -795,6 +818,113 @@ export function reorderWidgets(
     { method: "POST", body: JSON.stringify({ positions }) },
     scopedHeaders(tenantToken ?? getTenantToken())
   );
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard export / import (JSON)
+// ---------------------------------------------------------------------------
+
+/** Portable dashboard snapshot: page settings + its widgets in order. */
+export interface DashboardExport {
+  version: 1;
+  page: {
+    name: string;
+    showBuiltins: boolean;
+    refreshSeconds?: number;
+    windowMinutes?: number;
+    defaultSpan?: number;
+  };
+  widgets: Array<{
+    kind: WidgetKind;
+    title: string;
+    promql: string;
+    unit?: string;
+    span: number;
+  }>;
+}
+
+/** Downloads one page (with all widgets) as a portable JSON file. */
+export async function exportPageJson(page: DashboardPage, widgets: PageWidget[]): Promise<void> {
+  const payload: DashboardExport = {
+    version: 1,
+    page: {
+      name: page.name,
+      showBuiltins: page.show_builtins !== false,
+      ...(page.refresh_seconds !== undefined ? { refreshSeconds: page.refresh_seconds } : {}),
+      ...(page.window_minutes !== undefined ? { windowMinutes: page.window_minutes } : {}),
+      ...(page.default_span !== undefined ? { defaultSpan: page.default_span } : {}),
+    },
+    widgets: widgets.map((w) => ({
+      kind: w.kind,
+      title: w.title,
+      promql: w.promql,
+      ...(w.unit ? { unit: w.unit } : {}),
+      span: w.span,
+    })),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  const safe = page.name.replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "page";
+  anchor.download = `dashboard-${safe}.json`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Imports a dashboard JSON file: creates the page, then re-creates each
+ * widget (server normalizes PromQL again — safety laws re-applied on import).
+ * Returns the created page for the caller to activate.
+ */
+export async function importPageJson(
+  tenantId: string,
+  file: File,
+  tenantToken?: string | null
+): Promise<DashboardPage> {
+  const text = await file.text();
+  let parsed: DashboardExport;
+  try {
+    parsed = JSON.parse(text) as DashboardExport;
+  } catch {
+    throw new Error("Not a valid dashboard JSON file");
+  }
+  if (
+    parsed === null ||
+    typeof parsed !== "object" ||
+    parsed.version !== 1 ||
+    parsed.page === null ||
+    typeof parsed.page?.name !== "string" ||
+    !Array.isArray(parsed.widgets)
+  ) {
+    throw new Error("Unrecognized dashboard export format");
+  }
+  const { page } = await createPage(
+    tenantId,
+    parsed.page.name,
+    parsed.page.showBuiltins
+  );
+  for (const widget of parsed.widgets) {
+    if (widget.kind === "hosts_table") {
+      await createWidget(tenantId, page.id, { kind: widget.kind, title: widget.title }, tenantToken);
+      continue;
+    }
+    if (typeof widget.promql !== "string" || widget.promql.trim().length === 0) {
+      continue; // skip malformed rows instead of failing the whole import
+    }
+    await createWidget(tenantId, page.id, {
+      kind: widget.kind,
+      title: widget.title,
+      promql: widget.promql,
+      unit: widget.unit,
+      span: widget.span,
+    }, tenantToken);
+  }
+  return page;
 }
 
 export function makePageHome(

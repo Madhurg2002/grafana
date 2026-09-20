@@ -54,6 +54,20 @@ function vectorResult(value: string): PromQueryResult {
 }
 
 // Mock the upstream Prometheus layer so routes are exercised without network.
+vi.mock("../src/services/audit.js", () => ({
+  recordAudit: vi.fn(async () => undefined),
+  listAudit: vi.fn(async () => [
+    {
+      id: 1,
+      tenant_id: "tenant-a",
+      actor_email: "a@test.dev",
+      action: "widget.create",
+      target: "CPU",
+      details: { widgetId: 7 },
+      created_at: new Date().toISOString(),
+    },
+  ]),
+}));
 vi.mock("../src/db/schema.js", () => ({
   upsertTenant: vi.fn(async () => undefined),
   upsertConnection: vi.fn(async (input: { tenantId: string; label?: string }) => ({
@@ -858,6 +872,89 @@ describe("API routes (app.inject)", () => {
       expect(JSON.parse(received[0] ?? "{}").tenantId).toBe("sse-fan");
       remove();
       expect(broadcaster.clientCount("sse-fan")).toBe(0);
+    });
+
+    it("broadcastAlert fans alert transitions out to the tenant's clients as `event: alert` frames", async () => {
+      const { getSseBroadcaster, resetSseBroadcaster } = await import("../src/services/sse.js");
+      resetSseBroadcaster();
+      const broadcaster = getSseBroadcaster();
+      const received: string[] = [];
+      const remove = broadcaster.addClient("tenant-alerts", (payload) => {
+        received.push(payload);
+      });
+      broadcaster.broadcastAlert({
+        alertId: 5,
+        tenantId: "tenant-alerts",
+        title: "CPU high",
+        state: "firing",
+        value: 96.4,
+        threshold: 90,
+        comparator: ">",
+        promql: "cpu",
+        firedAt: new Date().toISOString(),
+      });
+      // Cross-tenant silence: another tenant's clients must NOT receive it.
+      const otherReceived: string[] = [];
+      const removeOther = broadcaster.addClient("other-tenant", (payload) => {
+        otherReceived.push(payload);
+      });
+      broadcaster.broadcastAlert({
+        alertId: 6,
+        tenantId: "tenant-alerts",
+        title: "RAM high",
+        state: "resolved",
+        value: 40,
+        threshold: 90,
+        comparator: ">",
+        promql: "ram",
+        firedAt: new Date().toISOString(),
+      });
+      expect(received).toHaveLength(2);
+      expect(otherReceived).toHaveLength(0);
+      const frame = received[0] ?? "";
+      expect(frame.startsWith("event: alert\ndata: ")).toBe(true);
+      const parsed = JSON.parse(frame.replace("event: alert\ndata: ", "")) as { state: string; title: string };
+      expect(parsed.state).toBe("firing");
+      expect(parsed.title).toBe("CPU high");
+      remove();
+      removeOther();
+    });
+  });
+
+  describe("GET /api/profile/activity", () => {
+    async function getAuthToken(): Promise<string> {
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      return token;
+    }
+
+    it("401s without a session", async () => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/profile/activity?tenantId=tenant-a",
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it("returns the newest audit entries with camelCase fields for the owner", async () => {
+      const token = await getAuthToken();
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/profile/activity?tenantId=tenant-a&limit=10",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as {
+        activity: Array<{ id: number; actorEmail: string | null; action: string; target: string | null }>;
+      };
+      expect(body.activity).toHaveLength(1);
+      expect(body.activity[0]?.action).toBe("widget.create");
+      expect(body.activity[0]?.actorEmail).toBe("a@test.dev");
+      expect(body.activity[0]?.target).toBe("CPU");
     });
   });
 });

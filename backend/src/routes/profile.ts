@@ -5,8 +5,10 @@ import {
   listSharesCreatedBy,
   listSharesForEmail,
   searchUsers,
+  tenantOwnedBy,
   type ShareLinkRow,
 } from "../db/users.js";
+import { listAudit } from "../services/audit.js";
 
 export interface ProfileShare {
   id: string;
@@ -77,6 +79,39 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
       sharedWithMe: sharedWithMe
         .filter((row) => row.created_by !== user.sub)
         .map(toShare),
+    });
+  });
+
+  /**
+   * GET /api/profile/activity?tenantId=... — newest audit entries for a
+   * workspace the user owns (append-only trail; see services/audit.ts).
+   */
+  app.get("/api/profile/activity", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (user === null) {
+      return reply;
+    }
+    const parsed = z
+      .object({ tenantId: z.string().min(1).max(128) })
+      .safeParse(request.query);
+    if (!parsed.success) {
+      return reply.code(400).send({ error: "tenantId query parameter is required" });
+    }
+    if (!(await tenantOwnedBy(parsed.data.tenantId, user.sub))) {
+      return reply.code(403).send({ error: "You do not own this workspace" });
+    }
+    const limitRaw = (request.query as { limit?: string }).limit;
+    const limit = z.coerce.number().int().min(1).max(500).safeParse(limitRaw ?? "100");
+    const entries = await listAudit(parsed.data.tenantId, limit.success ? limit.data : 100);
+    return reply.code(200).send({
+      activity: entries.map((row) => ({
+        id: row.id,
+        actorEmail: row.actor_email,
+        action: row.action,
+        target: row.target,
+        details: row.details,
+        createdAt: row.created_at,
+      })),
     });
   });
 }
