@@ -8,6 +8,7 @@ import { shareRoutes } from "../src/routes/share.js";
 import { profileRoutes } from "../src/routes/profile.js";
 import { orgRoutes } from "../src/routes/orgs.js";
 import { getShareLink } from "../src/db/users.js";
+import { signViewToken } from "../src/services/shareTokens.js";
 import { verifyToken } from "../src/middleware/auth.js";
 import { setEnv, type Env } from "../src/config/env.js";
 import { setQueryCache, QueryCache } from "../src/services/cache.js";
@@ -709,6 +710,92 @@ describe("API routes (app.inject)", () => {
       expect(claims?.type === "tenant" ? claims.tenantId : null).toBe("tenant-edit");
       expect(claims?.type === "tenant" ? claims.shareId : undefined).toBe("shr_edit123");
       expect(claims?.type === "tenant" ? claims.exp : undefined).toBeGreaterThan(Date.now());
+    });
+
+    it("GET /api/share/:id/view accepts a bearer view token WITHOUT an email param (email_edit)", async () => {
+      vi.mocked(getShareLink).mockResolvedValue({
+        id: "shr_email_edit",
+        tenant_id: "tenant-email",
+        created_by: "usr_other",
+        label: "default",
+        created_at: new Date(),
+        revoked: false,
+        access: "email_edit",
+        allowed_emails: ["invited@test.dev"],
+        invited_emails: [],
+      });
+      // The exact client flow: sign in as the invited address, mint the
+      // short-lived view token, then fetch the snapshot with ONLY the
+      // bearer token — no ?email= query param.
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "invited@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      const access = await app.inject({
+        method: "POST",
+        url: "/api/share/shr_email_edit/access-token",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(access.statusCode).toBe(200);
+      const accessBody = access.json() as { viewToken: string; canEdit: boolean };
+      expect(accessBody.canEdit).toBe(true);
+
+      // Regression: this used to 403 because the allow-list check compared
+      // against an empty ?email= param even with a valid token.
+      const view = await app.inject({
+        method: "GET",
+        url: "/api/share/shr_email_edit/view",
+        headers: { authorization: `Bearer ${accessBody.viewToken}` },
+      });
+      expect(view.statusCode).toBe(200);
+      const body = view.json() as { access: string; canEdit: boolean };
+      expect(body.access).toBe("email_edit");
+      expect(body.canEdit).toBe(true);
+    });
+
+    it("GET /api/share/:id/view rejects a valid-signature token for a non-allow-listed email", async () => {
+      vi.mocked(getShareLink).mockResolvedValue({
+        id: "shr_email_edit",
+        tenant_id: "tenant-email",
+        created_by: "usr_other",
+        label: "default",
+        created_at: new Date(),
+        revoked: false,
+        access: "email_edit",
+        allowed_emails: ["other@test.dev"],
+        invited_emails: [],
+      });
+      // Properly signed by the server, but bound to an address that is not
+      // on the share's allow-list — token-derived identity must not bypass it.
+      const offList = signViewToken("shr_email_edit", "not-invited@test.dev");
+      const view = await app.inject({
+        method: "GET",
+        url: "/api/share/shr_email_edit/view",
+        headers: { authorization: `Bearer ${offList}` },
+      });
+      expect(view.statusCode).toBe(403);
+    });
+
+    it("GET /api/share/:id/view rejects tampered tokens with 403", async () => {
+      vi.mocked(getShareLink).mockResolvedValue({
+        id: "shr_email_edit",
+        tenant_id: "tenant-email",
+        created_by: "usr_other",
+        label: "default",
+        created_at: new Date(),
+        revoked: false,
+        access: "email_view",
+        allowed_emails: ["invited@test.dev"],
+        invited_emails: [],
+      });
+      const view = await app.inject({
+        method: "GET",
+        url: "/api/share/shr_email_edit/view",
+        headers: { authorization: "Bearer tampered.sig" },
+      });
+      expect(view.statusCode).toBe(403);
     });
 
     it("GET /api/auth/me rejects missing/invalid tokens with 401", async () => {
