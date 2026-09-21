@@ -142,6 +142,18 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
           {mode === "signup" ? <UserPlus className="h-4 w-4" aria-hidden /> : <LogIn className="h-4 w-4" aria-hidden />}
           {submitting ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}
         </button>
+
+        {mode === "login" ? (
+          <p className="text-center">
+            <a
+              href="/reset"
+              title="Start password recovery — we email you a reset link"
+              className="text-xs text-zinc-500 transition hover:text-emerald-300"
+            >
+              Forgot password?
+            </a>
+          </p>
+        ) : null}
       </form>
 
       <p className="mt-4 text-center text-xs text-zinc-500">

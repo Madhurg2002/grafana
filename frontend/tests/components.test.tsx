@@ -463,3 +463,77 @@ describe("AuthForm", () => {
     localStorage.removeItem("passthrough.token");
   });
 });
+
+describe("ResetPage", () => {
+  it("requests a reset link and surfaces the dev fallback link when mail is unconfigured", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/auth/request-reset")) {
+        return new Response(
+          JSON.stringify({ status: "dispatched", devResetUrl: "http://app/reset?token=abc123def456" }),
+          { status: 202 }
+        );
+      }
+      return new Response(JSON.stringify({ error: "unexpected" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { ResetPage } = await import("../src/components/ResetPage");
+    render(
+      <AuthProvider>
+        <ResetPage />
+      </AuthProvider>
+    );
+    await user.type(screen.getByLabelText(/email/i), "a@b.c");
+    await user.click(screen.getByRole("button", { name: /send reset link/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("reset-requested")).toBeTruthy();
+    });
+    expect(screen.getByTestId("dev-reset-link")).toBeTruthy();
+    const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("request-reset"));
+    expect(call).toBeTruthy();
+    const body1 = JSON.parse(String(call?.[1]?.body)) as { email: string };
+    expect(body1).toEqual({ email: "a@b.c" });
+    vi.unstubAllGlobals();
+  });
+
+  it("sets a new password from an emailed token and signs the user in", async () => {
+    window.history.replaceState(null, "", "/reset?token=abc123def456ghij");
+    const user = userEvent.setup();
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/api/auth/reset")) {
+        return new Response(
+          JSON.stringify({
+            token: "tok2",
+            user: { id: "u1", email: "a@b.c", displayName: "A", tenantId: "t1" },
+          }),
+          { status: 200 }
+        );
+      }
+      return new Response(JSON.stringify({ error: "unexpected" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { ResetPage } = await import("../src/components/ResetPage");
+    render(
+      <AuthProvider>
+        <ResetPage />
+      </AuthProvider>
+    );
+    await user.type(screen.getByLabelText(/new password/i), "newpassword1");
+    await user.click(screen.getByRole("button", { name: /set new password/i }));
+
+    await waitFor(() => {
+      expect(localStorage.getItem("passthrough.token")).toBe("tok2");
+    });
+    const call = fetchMock.mock.calls.find((c) => String(c[0]).includes("/api/auth/reset"));
+    const body2 = JSON.parse(String(call?.[1]?.body)) as { token: string; password: string };
+    expect(body2).toEqual({ token: "abc123def456ghij", password: "newpassword1" });
+    localStorage.removeItem("passthrough.token");
+    window.history.replaceState(null, "", "/");
+    vi.unstubAllGlobals();
+  });
+});

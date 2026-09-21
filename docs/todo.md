@@ -25,8 +25,7 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
 | Email verification on signup | New accounts are trusted immediately today. Needs a `users.email_verified` column + a signed verification-token flow, all of which requires **sending mail first**. | With the Brevo setup below — same email plumbing lands together |
-| Password reset via email | Currently the only recovery is Profile → Change password (requires knowing the current password). A forgotten password is unrecoverable without email. Needs a reset-token table (migration), `POST /api/auth/request-reset` + `POST /api/auth/reset` endpoints, and a `/reset` page. | With the Brevo setup below — same email plumbing lands together |
-| Invite emails (Brevo) | Plumbing exists (`services/email.ts` via Brevo API, `/api/share/:id/invite`) and stays off while `BREVO_API_KEY`/`BREVO_FROM_EMAIL` are unset. Non-prod apps must not send mail. Verification + reset build on this. | When the app is declared prod-ready + Brevo sender is verified |
+| Invite emails (Brevo) | Plumbing exists (`services/email.ts` via Brevo API, `/api/share/:id/invite`) and stays off while `BREVO_API_KEY`/`BREVO_FROM_EMAIL` are unset. Non-prod apps must not send mail. Password-reset mails (shipped) + verification build on this. | When the app is declared prod-ready + Brevo sender is verified |
 | Production analytics / error tracking | No Sentry/analytics wired. | At public launch |
 | Live-upstream suite in CI | The gated suite (`TEST_PROMETHEUS_URL`) exists; wire it into a scheduled CI job with the demo upstream + a Postgres service. | When CI minutes are available |
 

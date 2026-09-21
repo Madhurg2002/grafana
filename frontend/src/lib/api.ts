@@ -51,6 +51,27 @@ export function apiBase(): string {
   return API_BASE.replace(/\/$/, "");
 }
 
+// ---------------------------------------------------------------------------
+// Forgot-password flow (public, unauthenticated).
+// ---------------------------------------------------------------------------
+
+export interface RequestResetResult {
+  status: "dispatched";
+  /** Present only when email isn't configured — dev/test convenience. */
+  devResetUrl?: string;
+  mailReason?: string;
+}
+
+/** Asks the backend to email a password-reset link for the account. */
+export function requestPasswordReset(email: string): Promise<RequestResetResult> {
+  return postJson<RequestResetResult>("/api/auth/request-reset", { email });
+}
+
+/** Consumes a reset token and sets a new password; returns a fresh session. */
+export function resetPassword(token: string, password: string): Promise<AuthResponse> {
+  return postJson<AuthResponse>("/api/auth/reset", { token, password });
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   // Tenant-bearing endpoints (query/stream/panels) accept the user session
   // OR the workspace-scoped token — send whichever the client has.

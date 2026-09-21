@@ -7,6 +7,7 @@ import { DashboardView } from "./components/DashboardView";
 import { ShareView } from "./components/ShareView";
 import { ProfileView } from "./components/ProfileView";
 import { LegalPage } from "./components/LegalPage";
+import { ResetPage } from "./components/ResetPage";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { fetchConnectionInfo, type ConnectionInfo } from "./lib/api";
 
@@ -28,6 +29,7 @@ type Route =
   | { name: "auth"; mode: "login" | "signup" }
   | { name: "share"; id: string }
   | { name: "profile" }
+  | { name: "reset" }
   | { name: "legal"; doc: "privacy" | "terms" }
   | { name: "not-found"; path: string };
 
@@ -46,6 +48,9 @@ function parseRoute(): Route {
   }
   if (path === "/profile") {
     return { name: "profile" };
+  }
+  if (path === "/reset") {
+    return { name: "reset" };
   }
   if (path === "/privacy") {
     return { name: "legal", doc: "privacy" as const };
@@ -454,6 +459,9 @@ function Router(): JSX.Element {
   }
   if (route.name === "legal") {
     return <LegalPage doc={route.doc} />;
+  }
+  if (route.name === "reset") {
+    return <ResetPage />;
   }
   if (route.name === "not-found") {
     return <NotFoundPage path={route.path} />;

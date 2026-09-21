@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { QueryResult } from "pg";
 import { getPool } from "./schema.js";
 
@@ -501,4 +501,55 @@ export async function deleteUserAccount(
   } finally {
     client.release();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Password reset tokens (forgot-password flow).
+// ---------------------------------------------------------------------------
+
+/** SHA-256 of the raw token — this, never the raw token, touches the DB. */
+function hashResetToken(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex");
+}
+
+/**
+ * Issues a password-reset token for the user. Returns the RAW token (it
+ * goes into the email link); only its hash is persisted. Any previous
+ * tokens for the user are deleted first so at most one reset link is
+ * valid per account at a time.
+ */
+export async function createPasswordResetToken(userId: string): Promise<string> {
+  const raw = randomBytes(32).toString("hex");
+  const pool = getPool();
+  await pool.query("DELETE FROM password_reset_tokens WHERE user_id = $1", [userId]);
+  await pool.query(
+    `INSERT INTO password_reset_tokens (token_hash, user_id, expires_at)
+     VALUES ($1, $2, NOW() + INTERVAL '30 minutes')`,
+    [hashResetToken(raw), userId]
+  );
+  return raw;
+}
+
+/**
+ * Single-use token consumption: deletes the row and returns the bound
+ * user id, or null when the token is unknown/expired. The delete-then-
+ * return runs inside one statement so two concurrent resets cannot both
+ * succeed (only one row exists to delete).
+ */
+export async function consumePasswordResetToken(raw: string): Promise<string | null> {
+  const result = await getPool().query<{ user_id: string }>(
+    `DELETE FROM password_reset_tokens
+     WHERE token_hash = $1 AND expires_at > NOW()
+     RETURNING user_id`,
+    [hashResetToken(raw)]
+  );
+  return result.rows[0]?.user_id ?? null;
+}
+
+/** Replaces a user's password hash (forgot-password completion). */
+export async function updatePasswordHash(userId: string, passwordHash: string): Promise<void> {
+  await getPool().query(
+    "UPDATE users SET password_hash = $2 WHERE id = $1",
+    [userId, passwordHash]
+  );
 }

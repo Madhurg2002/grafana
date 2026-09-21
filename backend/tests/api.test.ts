@@ -71,6 +71,9 @@ vi.mock("../src/services/audit.js", () => ({
 }));
 vi.mock("../src/db/schema.js", () => ({
   upsertTenant: vi.fn(async () => undefined),
+  getPool: vi.fn(() => {
+    throw new Error("no live DB in unit tests");
+  }),
   upsertConnection: vi.fn(async (input: { tenantId: string; label?: string }) => ({
     id: 42,
     tenant_id: input.tenantId,
@@ -163,6 +166,11 @@ vi.mock("../src/db/users.js", async (importOriginal) => {
     listSharesCreatedBy: vi.fn(async () => []),
     listSharesForEmail: vi.fn(async () => []),
     deleteUserAccount: vi.fn(async () => ({ email: "a@test.dev" })),
+    createPasswordResetToken: vi.fn(async () => "rawtesttoken".repeat(4)),
+    consumePasswordResetToken: vi.fn(async (raw: string) =>
+      raw === "goodtoken12345678" ? "usr_test123" : null
+    ),
+    updatePasswordHash: vi.fn(async () => undefined),
   };
 });
 
@@ -957,6 +965,86 @@ describe("API routes (app.inject)", () => {
       expect(body.activity[0]?.action).toBe("widget.create");
       expect(body.activity[0]?.actorEmail).toBe("a@test.dev");
       expect(body.activity[0]?.target).toBe("CPU");
+    });
+  });
+
+  describe("POST /api/auth/request-reset + /api/auth/reset", () => {
+    it("request-reset answers uniformly for unknown accounts (no enumeration)", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/request-reset",
+        payload: { email: "nobody@nowhere.dev" },
+      });
+      expect(response.statusCode).toBe(202);
+      expect(response.json()).toEqual({ status: "dispatched" });
+    });
+
+    it("request-reset returns the dev link when mail is unconfigured", async () => {
+      vi.mocked(users.findUserByEmail).mockResolvedValueOnce({
+        id: "usr_test123",
+        email: "a@test.dev",
+        password_hash: "x",
+        display_name: "A",
+        created_at: new Date(),
+      });
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/request-reset",
+        payload: { email: "a@test.dev" },
+      });
+      expect(response.statusCode).toBe(202);
+      const body = response.json() as { status: string; devResetUrl?: string; mailReason?: string };
+      expect(body.status).toBe("dispatched");
+      // BREVO_API_KEY is unset in tests → skipped send exposes the link.
+      expect(body.devResetUrl).toMatch(/\/reset\?token=/);
+      expect(body.mailReason).toBeTruthy();
+    });
+
+    it("request-reset validates the body", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/request-reset",
+        payload: { email: "not-an-email" },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it("reset rejects an unknown token with a stable error", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/reset",
+        payload: { token: "0".repeat(64), password: "newpassword1" },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({
+        error: "This reset link is invalid or has expired",
+      });
+    });
+
+    it("reset completes with a valid token: hashes the new password, issues a session", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/reset",
+        payload: { token: "goodtoken12345678", password: "newpassword1" },
+      });
+      expect(response.statusCode).toBe(200);
+      const body = response.json() as { token: string; user: { email: string } };
+      expect(body.token).toBeTruthy();
+      expect(body.user.email).toBe("a@test.dev");
+      // The stored hash must be a fresh scrypt hash, not the raw password.
+      const hash = vi.mocked(users.updatePasswordHash).mock.calls[0]?.[1] ?? "";
+      expect(hash).toContain("scrypt");
+      expect(hash).not.toContain("newpassword1");
+    });
+
+    it("reset enforces the password minimum", async () => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/reset",
+        payload: { token: "0".repeat(64), password: "short" },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ details: expect.any(Array) });
     });
   });
 
