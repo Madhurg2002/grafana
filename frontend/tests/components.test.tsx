@@ -380,6 +380,123 @@ describe("DashboardView", () => {
     expect(screen.getByText(/\/share\/abc123/)).toBeInTheDocument();
     localStorage.removeItem("passthrough.token");
   });
+
+  it("Built-ins toggle sticks when a stale workspace token shadows nothing (session wins)", async () => {
+    localStorage.setItem("passthrough.token", "session-token");
+    localStorage.setItem("passthrough.tenantToken", "stale-scoped-token");
+    const page = {
+      id: 7,
+      tenant_id: "team-9",
+      name: "home",
+      position: 0,
+      is_home: true,
+      show_builtins: false as const,
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const auth = String((init?.headers as Record<string, string> | undefined)?.authorization ?? "");
+      const authed = auth.includes("session-token");
+      if (url.includes("/api/auth/me")) {
+        return new Response(
+          JSON.stringify({ user: { id: "u1", email: "a@b.c", displayName: "A", tenantId: "team-9" } }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/api/pages/team-9")) {
+        return authed
+          ? new Response(JSON.stringify({ pages: [page] }), { status: 200 })
+          : new Response(JSON.stringify({ error: "Authentication required" }), { status: 401 });
+      }
+      if (url.includes("/api/stream")) {
+        throw new Error("EventSource uses its own transport");
+      }
+      return new Response(
+        JSON.stringify({ resultType: "vector", result: [], cached: false, query: "up" }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <AuthProvider>
+        {/* Embedded mode is what SignedInApp renders — the Built-ins toggle
+            lives in that slim toolbar. */}
+        <DashboardView tenantId="team-9" embedded />
+      </AuthProvider>
+    );
+    const toggle = await screen.findByTestId("toggle-builtins");
+    expect(toggle).toHaveTextContent("Built-ins: off");
+    const user = userEvent.setup();
+    await user.click(toggle);
+    // The settings PATCH must carry the SESSION token (it wins over the
+    // stale scoped token) and must succeed → label flips and stays flipped.
+    await waitFor(() => {
+      expect(toggle).toHaveTextContent("Built-ins: on");
+    });
+    const patch = fetchMock.mock.calls.find(
+      (c) => String(c[0]).includes("/settings") && c[1]?.method === "PATCH"
+    );
+    const headers = (patch?.[1]?.headers ?? {}) as Record<string, string>;
+    expect(headers.authorization).toBe("Bearer session-token");
+    expect(JSON.parse(String(patch?.[1]?.body))).toEqual({ showBuiltins: true });
+    // Toggle still shows "on" after a beat — no optimistic revert.
+    await new Promise((r) => setTimeout(r, 30));
+    expect(toggle).toHaveTextContent("Built-ins: on");
+    localStorage.removeItem("passthrough.token");
+    localStorage.removeItem("passthrough.tenantToken");
+  });
+
+  it("pages 401 under the session fall back to the workspace-scoped token (allow-listed share viewer)", async () => {
+    // A signed-in allow-listed share viewer is NOT owner/org-member, so the
+    // session gets 403/401 on pages endpoints — the scoped share token is
+    // the credential that must win there.
+    localStorage.setItem("passthrough.token", "session-token");
+    localStorage.setItem("passthrough.tenantToken", "share-scoped-token");
+    const page = {
+      id: 7,
+      tenant_id: "team-9",
+      name: "home",
+      position: 0,
+      is_home: true,
+      show_builtins: false as const,
+    };
+    const authsSeen: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const auth = String((init?.headers as Record<string, string> | undefined)?.authorization ?? "");
+      if (url.includes("/api/auth/me")) {
+        return new Response(
+          JSON.stringify({ user: { id: "u2", email: "v@x.y", displayName: "V", tenantId: "team-9" } }),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/api/pages/team-9")) {
+        authsSeen.push(auth);
+        if (auth.includes("share-scoped-token")) {
+          return new Response(JSON.stringify({ pages: [page] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ error: "You do not have access to this workspace" }), { status: 403 });
+      }
+      if (url.includes("/api/stream")) {
+        throw new Error("EventSource uses its own transport");
+      }
+      return new Response(
+        JSON.stringify({ resultType: "vector", result: [], cached: false, query: "up" }),
+        { status: 200 }
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <AuthProvider>
+        <DashboardView tenantId="team-9" embedded />
+      </AuthProvider>
+    );
+    await screen.findByTestId("toggle-builtins");
+    // First attempt carried the session, retry carried the scoped token.
+    expect(authsSeen.some((a) => a.includes("session-token"))).toBe(true);
+    expect(authsSeen.some((a) => a.includes("share-scoped-token"))).toBe(true);
+    localStorage.removeItem("passthrough.token");
+    localStorage.removeItem("passthrough.tenantToken");
+  });
 });
 
 describe("ShareView", () => {

@@ -103,6 +103,15 @@ export function getTenantToken(): string | null {
   }
 }
 
+/** Drops the stored workspace-scoped token (dead tokens must not linger). */
+export function clearTenantToken(): void {
+  try {
+    localStorage.removeItem(TENANT_TOKEN_STORAGE_KEY);
+  } catch {
+    // Storage unavailable — nothing to clear.
+  }
+}
+
 export function connectTenant(
   tenantId: string,
   prometheusUrl: string,
@@ -288,15 +297,47 @@ async function authedJson<T>(path: string, init: RequestInit = {}, extraHeaders:
   // Only send a JSON content-type when there is a body — Fastify 400s a
   // body-less POST that declares application/json (breaks access-token).
   const hasBody = init.body !== undefined && init.body !== null;
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      ...(hasBody ? { "content-type": "application/json" } : {}),
-      ...(token !== null ? { authorization: `Bearer ${token}` } : {}),
-      ...extraHeaders,
-      ...init.headers,
-    },
-  });
+  const scopedAuth = extraHeaders.authorization;
+  const attempt = async (authorization: Record<string, string>): Promise<Response> =>
+    fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: {
+        ...(hasBody ? { "content-type": "application/json" } : {}),
+        ...extraHeaders,
+        ...authorization,
+        ...init.headers,
+      },
+    });
+  // Signed-in sessions go first — but when the caller ALSO supplied a
+  // workspace-scoped token (legacy connect flow, share links) a 401/403
+  // retries with that token before giving up: allow-listed share viewers
+  // are NOT owner/org members, so only the scoped token can authorize them.
+  // The previous behavior — scoped token spread AFTER the session header —
+  // let a stale scoped token from localStorage shadow the live session on
+  // every pages/widgets/settings call, 401ing them and reverting optimistic
+  // UI (the Built-ins toggle kept "switching back").
+  if (token !== null) {
+    const first = await attempt({ authorization: `Bearer ${token}` });
+    if (first.ok || (first.status !== 401 && first.status !== 403) || scopedAuth === undefined) {
+      return consume<T>(first);
+    }
+    const second = await attempt({ authorization: scopedAuth });
+    if (second.status === 401 && token === null) {
+      clearTenantToken();
+    }
+    return consume<T>(second);
+  }
+  const response = await attempt({});
+  if (response.status === 401 && scopedAuth !== undefined) {
+    // The scoped token we sent is dead (e.g. an expired 1h share token).
+    // Purge it so the next attempt starts clean instead of replaying it.
+    clearTenantToken();
+  }
+  return consume<T>(response);
+}
+
+/** Parses the JSON body and throws the app's `{ error, details? }` shape. */
+async function consume<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => ({}))) as T & {
     error?: string;
     details?: Array<{ path: string; message: string }>;
@@ -755,6 +796,8 @@ export interface PageWidget {
   promql: string;
   unit: string | null;
   span: number;
+  /** Pixel height the user pinned (60–1200). */
+  height_px: number;
   position: number;
   created_at: string;
 }
@@ -780,6 +823,7 @@ export function createWidget(
     promql?: string;
     unit?: string;
     span?: number;
+    heightPx?: number;
   },
   tenantToken?: string | null
 ): Promise<{ widget: PageWidget }> {
@@ -797,6 +841,7 @@ export function createWidget(
           ? { unit: widget.unit }
           : {}),
         ...(widget.span !== undefined ? { span: widget.span } : {}),
+        ...(widget.heightPx !== undefined ? { heightPx: widget.heightPx } : {}),
       }),
     },
     scopedHeaders(tenantToken ?? getTenantToken())
@@ -806,7 +851,7 @@ export function createWidget(
 export function updateWidget(
   tenantId: string,
   widgetId: number,
-  patch: { title?: string; promql?: string; unit?: string | null; span?: number; kind?: WidgetKind },
+  patch: { title?: string; promql?: string; unit?: string | null; span?: number; heightPx?: number; kind?: WidgetKind },
   tenantToken?: string | null
 ): Promise<{ widget: PageWidget }> {
   return authedJson<{ widget: PageWidget }>(

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { apiBase, getToken, setToken, type AuthUser } from "../lib/api";
+import { apiBase, clearTenantToken, getToken, setToken, type AuthUser } from "../lib/api";
 
 /**
  * Client-side session state. The backend verifies every request via the
@@ -73,6 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
           setToken(null);
           setTokenState(null);
           setUser(null);
+          // A dead session must not leave a stale workspace-scoped token
+          // behind — it would shadow future auth attempts (see authedJson).
+          clearTenantToken();
+          setTenantTokenState(null);
           setReady(true);
         }
       }
@@ -106,6 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }): JSX.Element
     setToken(null);
     setTokenState(null);
     setUser(null);
+    // Sign-out must clear the workspace-scoped token too — otherwise the
+    // next session can inherit a stale scoped token that shadows auth.
+    clearTenantToken();
+    setTenantTokenState(null);
   }, []);
 
   const value = useMemo<AuthContextValue>(
