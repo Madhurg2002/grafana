@@ -59,12 +59,19 @@ export function GaugeCard({ title, percent, level, query, onExportCsv }: GaugeCa
           </button>
         ) : null}
       </div>
-      <div className="relative mt-2 h-28 w-[70%] mx-auto">
+      {/* 2:1 box = a semicircle's natural bounding box. Recharts caps the
+          radius at min(w,h)/2 and resolves % radii against it, so in a wide
+          short box the dial would shrink and hug the bottom (the "tiny gauge
+          in a big card" bug). With aspect 2:1 and 200% outer radius the arc
+          fills the full box on every card width; max-w keeps dials equal
+          across grid sizes. */}
+      <div className="relative mx-auto mt-2 w-full max-w-[15rem]">
+        <div className="aspect-[2/1]">
         <ResponsiveContainer width="100%" height="100%">
           <RadialBarChart
             data={data}
-            innerRadius="72%"
-            outerRadius="100%"
+            innerRadius="144%"
+            outerRadius="200%"
             cy="100%"
             startAngle={180}
             endAngle={0}
@@ -79,7 +86,8 @@ export function GaugeCard({ title, percent, level, query, onExportCsv }: GaugeCa
             <RadialBar background={{ fill: "#27272a" }} dataKey="value" cornerRadius={8} />
           </RadialBarChart>
         </ResponsiveContainer>
-        <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-0.5">
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-center pb-0.5">
           <span
             className="text-xl font-semibold tabular-nums"
             style={{ color: LEVEL_COLORS[resolved] }}

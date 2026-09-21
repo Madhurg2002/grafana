@@ -104,19 +104,19 @@ const WIDGET_DEFAULTS: Record<WidgetKind, { title: string; promql: string; unit:
  * 6 columns at 2xl (1536px+) and up, so a very large monitor shows a very
  * large number of charts at once (wall-of-graphs like Grafana's TV view).
  *
- * Span 1 (gauges/stats) is deliberately HALF a normal column: a dial or a
- * single number needs far less room than a sparkline, so it renders at half
- * the width a same-span sparkline would take (2 of 6 cols in wide mode,
- * 2 of 4 in the narrow grid).
+ * Span 1 (gauges/stats) is deliberately HALF the width of a span-2 sparkline:
+ * a dial or a single number needs far less room. The wide grid doubles its
+ * column count (4 at sm+, 6 at 2xl+) so gauges (1 col) render at half the
+ * width of sparklines (2 cols) on every screen size, not just huge ones.
  */
 function spanClass(span: number, wide = false): string {
   if (span >= 3) {
-    return wide ? "col-span-2 md:col-span-2 2xl:col-span-6 3xl:col-span-6" : "col-span-2 2xl:col-span-4";
+    return wide ? "col-span-1 sm:col-span-4 2xl:col-span-6" : "col-span-1 sm:col-span-2 2xl:col-span-4";
   }
   if (span === 2) {
-    return wide ? "col-span-2 md:col-span-2 2xl:col-span-4 3xl:col-span-4" : "col-span-2 2xl:col-span-4";
+    return wide ? "col-span-1 sm:col-span-2 2xl:col-span-4" : "col-span-1 2xl:col-span-2";
   }
-  return wide ? "col-span-2 2xl:col-span-2" : "col-span-2 2xl:col-span-2";
+  return wide ? "col-span-1 2xl:col-span-2" : "col-span-1 2xl:col-span-1";
 }
 
 /**
@@ -1155,8 +1155,8 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
       ) : null}
 
       <div
-        className={`mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 ${
-          wide ? "2xl:grid-cols-6" : "2xl:grid-cols-4"
+        className={`mt-3 grid grid-cols-1 gap-4 ${
+          wide ? "sm:grid-cols-4 2xl:grid-cols-6" : "sm:grid-cols-2 2xl:grid-cols-4"
         }`}
         data-testid="panel-grid"
       >
