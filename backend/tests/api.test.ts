@@ -8,6 +8,7 @@ import { shareRoutes } from "../src/routes/share.js";
 import { profileRoutes } from "../src/routes/profile.js";
 import { orgRoutes } from "../src/routes/orgs.js";
 import { getShareLink } from "../src/db/users.js";
+import * as users from "../src/db/users.js";
 import { signViewToken } from "../src/services/shareTokens.js";
 import { verifyToken } from "../src/middleware/auth.js";
 import { setEnv, type Env } from "../src/config/env.js";
@@ -161,6 +162,7 @@ vi.mock("../src/db/users.js", async (importOriginal) => {
     ),
     listSharesCreatedBy: vi.fn(async () => []),
     listSharesForEmail: vi.fn(async () => []),
+    deleteUserAccount: vi.fn(async () => ({ email: "a@test.dev" })),
   };
 });
 
@@ -955,6 +957,67 @@ describe("API routes (app.inject)", () => {
       expect(body.activity[0]?.action).toBe("widget.create");
       expect(body.activity[0]?.actorEmail).toBe("a@test.dev");
       expect(body.activity[0]?.target).toBe("CPU");
+    });
+  });
+
+  describe("DELETE /api/profile/me", () => {
+    async function getAuthToken(): Promise<string> {
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      return token;
+    }
+
+    it("401s without a session", async () => {
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/profile/me",
+        payload: { confirm: "DELETE" },
+      });
+      expect(response.statusCode).toBe(401);
+      expect(vi.mocked(users.deleteUserAccount)).not.toHaveBeenCalled();
+    });
+
+    it("400s unless the literal DELETE confirmation is present", async () => {
+      const token = await getAuthToken();
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/profile/me",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { confirm: "delete" },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ error: expect.stringContaining("confirm") });
+      expect(vi.mocked(users.deleteUserAccount)).not.toHaveBeenCalled();
+    });
+
+    it("deletes the account with the session identity and reports the email", async () => {
+      const token = await getAuthToken();
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/profile/me",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { confirm: "DELETE" },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ deleted: true, email: "a@test.dev" });
+      // Actor identity comes from the verified session, never the body.
+      expect(vi.mocked(users.deleteUserAccount)).toHaveBeenCalledWith("usr_test123");
+    });
+
+    it("404s when the account is already gone", async () => {
+      const token = await getAuthToken();
+      vi.mocked(users.deleteUserAccount).mockResolvedValueOnce(null);
+      const response = await app.inject({
+        method: "DELETE",
+        url: "/api/profile/me",
+        headers: { authorization: `Bearer ${token}` },
+        payload: { confirm: "DELETE" },
+      });
+      expect(response.statusCode).toBe(404);
     });
   });
 });

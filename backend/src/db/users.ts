@@ -419,10 +419,16 @@ export async function detachTenantFromOrg(tenantId: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Hard-deletes a user account in one transaction:
- *  - the owned tenant (dashboards, widgets, connections, alerts, shares)
- *    cascades away via `tenants.owner_id ON DELETE CASCADE` semantics — the
- *    tenant itself is deleted with its owner;
+ * Hard-deletes a user account and every trace of it, in one transaction:
+ *  - the owned tenant (dashboards, widgets, connections, alerts, panels,
+ *    share links) cascades away via the `tenants` FKs;
+ *  - the owned workspace's audit trail is purged explicitly (audit_log has
+ *    no tenant FK, so a tenant cascade would NOT cover it);
+ *  - audit rows in OTHER workspaces that name this account as actor are
+ *    anonymized (email blanked, id cleared) — history stays attributable
+ *    to a since-deleted account without keeping personal data;
+ *  - the account's email is scrubbed from every share allow-list and
+ *    invite list, so a future re-registration cannot inherit old access;
  *  - org memberships cascade (`org_members.user_id ON DELETE CASCADE`);
  *  - orgs the user created keep living (`created_by ON DELETE SET NULL`);
  *  - share links they created keep their targets (creator set to NULL).
@@ -449,8 +455,41 @@ export async function deleteUserAccount(
       return null;
     }
     if (row.tenant_id !== null) {
-      // Cascades: connections, pages, widgets, alerts, share links, audit log.
+      // Cascades: connections, pages, widgets, alerts, share links, panels.
       await client.query("DELETE FROM tenants WHERE id = $1", [row.tenant_id]);
+      // audit_log is FK-less, so the cascade above cannot reach it — purge
+      // this workspace's trail explicitly or actor PII would survive.
+      await client.query("DELETE FROM audit_log WHERE tenant_id = $1", [
+        row.tenant_id,
+      ]);
+    }
+    // Anonymize actor references in OTHER workspaces' trails (own rows are
+    // gone via the purge above when a tenant existed).
+    await client.query(
+      `UPDATE audit_log
+       SET actor_email = '(deleted account)', actor_user_id = NULL
+       WHERE actor_user_id = $1`,
+      [userId]
+    );
+    // Scrub the email from share allow/invite lists everywhere. The lists
+    // store lowercased addresses; the raw email is covered for legacy rows.
+    const email = row.email;
+    const lowerEmail = email.toLowerCase();
+    await client.query(
+      `UPDATE share_links
+       SET allowed_emails = array_remove(allowed_emails, $1),
+           invited_emails = array_remove(invited_emails, $1)
+       WHERE $1 = ANY(allowed_emails) OR $1 = ANY(invited_emails)`,
+      [email]
+    );
+    if (lowerEmail !== email) {
+      await client.query(
+        `UPDATE share_links
+         SET allowed_emails = array_remove(allowed_emails, $1),
+             invited_emails = array_remove(invited_emails, $1)
+         WHERE $1 = ANY(allowed_emails) OR $1 = ANY(invited_emails)`,
+        [lowerEmail]
+      );
     }
     // Org membership rows cascade on user delete; created orgs survive.
     await client.query("DELETE FROM users WHERE id = $1", [userId]);
