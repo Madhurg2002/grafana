@@ -512,7 +512,9 @@ const widgetSchema = z.object({
   promql: z.string().max(4096).optional(),
   /** Nullable in patches: null clears the unit. */
   unit: z.string().max(24).nullish(),
-  span: z.number().int().min(1).max(3).optional(),
+  span: z.number().int().min(1).max(12).optional(),
+  /** Pixel height the user pinned for this widget (UI clamps 60–1200). */
+  heightPx: z.number().int().min(60).max(1200).optional(),
 });
 const widgetPatchSchema = widgetSchema.partial();
 const widgetReorderSchema = z.object({
@@ -576,6 +578,7 @@ app.post<{ Params: { tenantId: string; pageId: string }; Body: unknown }>(
       promql,
       unit: parsed.data.unit ?? null,
       span: parsed.data.span ?? 1,
+      heightPx: parsed.data.heightPx,
     });
     void recordAudit(
       { tenantId: tenantId.data, action: "widget.create", target: widget.title, details: { widgetId: widget.id, kind, pageId: pageId.data } },
@@ -608,6 +611,7 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
       ...(patch.promql !== undefined ? { promql: normalizePromQL(patch.promql) } : {}),
       ...(patch.unit !== undefined ? { unit: patch.unit } : {}),
       ...(patch.span !== undefined ? { span: patch.span } : {}),
+      ...(patch.heightPx !== undefined ? { heightPx: patch.heightPx } : {}),
       ...(patch.kind !== undefined ? { kind: patch.kind as WidgetKind } : {}),
     });
     if (updated === null) {
@@ -698,7 +702,7 @@ app.patch<{ Params: { tenantId: string; id: string }; Body: unknown }>(
       return reply; // 401/403 already sent
     }
     const bodySchema = z.object({
-      defaultSpan: z.number().int().min(1).max(3).optional(),
+      defaultSpan: z.number().int().min(1).max(12).optional(),
       refreshSeconds: z.number().int().min(5).max(600).optional(),
       windowMinutes: z.number().int().min(5).max(10080).optional(),
       showBuiltins: z.boolean().optional(),

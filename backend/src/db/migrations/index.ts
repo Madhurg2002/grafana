@@ -13,6 +13,8 @@ import { M013 } from "./013-share-links-multi.js";
 import { M014 } from "./014-connections-label-unique.js";
 import { M015 } from "./015-audit-log.js";
 import { M016 } from "./016-password-reset-tokens.js";
+import { M017 } from "./017-widget-span-12.js";
+import { M018 } from "./018-widget-height.js";
 
 /**
  * Ordered, immutable migrations. Once applied, a migration's SQL MUST NOT be
@@ -84,4 +86,6 @@ export const MIGRATIONS: Migration[] = [
   M014,
   M015,
   M016,
+  M017,
+  M018,
 ];

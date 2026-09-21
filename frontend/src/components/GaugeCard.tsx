@@ -17,6 +17,8 @@ export interface GaugeCardProps {
   query?: string;
   /** Fires when the user downloads this gauge's current value as CSV. */
   onExportCsv?: (title: string, percent: number) => void;
+  /** Pinned pixel height for the dial box (user-resized). Overrides the 2:1 aspect. */
+  heightPx?: number;
 }
 
 function levelFor(percent: number): StatusLevel {
@@ -25,7 +27,7 @@ function levelFor(percent: number): StatusLevel {
   return "emerald";
 }
 
-export function GaugeCard({ title, percent, level, query, onExportCsv }: GaugeCardProps): JSX.Element {
+export function GaugeCard({ title, percent, level, query, onExportCsv, heightPx }: GaugeCardProps): JSX.Element {
   const resolved = level ?? levelFor(percent);
   const clamped = Math.max(0, Math.min(100, percent));
   const data = [{ name: title, value: clamped, fill: LEVEL_COLORS[resolved] }];
@@ -65,8 +67,14 @@ export function GaugeCard({ title, percent, level, query, onExportCsv }: GaugeCa
           in a big card" bug). With aspect 2:1 and 200% outer radius the arc
           fills the full box on every card width; max-w keeps dials equal
           across grid sizes. */}
-      <div className="relative mx-auto mt-2 w-full max-w-[15rem]">
-        <div className="aspect-[2/1]">
+      <div
+        className={`relative mx-auto mt-2 w-full ${heightPx !== undefined ? "" : "aspect-[2/1] max-w-[15rem]"}`}
+        style={
+          heightPx !== undefined
+            ? { height: `${heightPx}px`, maxWidth: `${Math.round(heightPx * 2)}px` }
+            : undefined
+        }
+      >
         <ResponsiveContainer width="100%" height="100%">
           <RadialBarChart
             data={data}
@@ -86,15 +94,14 @@ export function GaugeCard({ title, percent, level, query, onExportCsv }: GaugeCa
             <RadialBar background={{ fill: "#27272a" }} dataKey="value" cornerRadius={8} />
           </RadialBarChart>
         </ResponsiveContainer>
-        </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-center pb-0.5">
-          <span
-            className="text-xl font-semibold tabular-nums"
-            style={{ color: LEVEL_COLORS[resolved] }}
-          >
-            {clamped.toFixed(1)}%
-          </span>
-        </div>
+      </div>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-center pb-0.5">
+        <span
+          className="text-xl font-semibold tabular-nums"
+          style={{ color: LEVEL_COLORS[resolved] }}
+        >
+          {clamped.toFixed(1)}%
+        </span>
       </div>
     </motion.div>
   );

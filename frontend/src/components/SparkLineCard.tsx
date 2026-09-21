@@ -18,6 +18,8 @@ export interface SparkLineCardProps {
   stroke: string;
   /** The PromQL behind this card — surfaced as a hover formula tooltip. */
   query?: string;
+  /** Pinned pixel height (user-resized). Defaults to the classic 112px chart. */
+  heightPx?: number;
 }
 
 /** Flattens series rows into timestamp×label CSV rows and downloads them. */
@@ -77,6 +79,7 @@ export function SparkLineCard({
   series,
   stroke,
   query,
+  heightPx,
 }: SparkLineCardProps): JSX.Element {
   const chartData = Array.from(
     series.reduce((rows, current, index) => {
@@ -128,7 +131,10 @@ export function SparkLineCard({
           ) : null}
         </span>
       </div>
-      <div className="mt-3 h-28">
+      <div
+        className="mt-3"
+        style={heightPx !== undefined ? { height: `${heightPx}px` } : { height: 112 }}
+      >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>

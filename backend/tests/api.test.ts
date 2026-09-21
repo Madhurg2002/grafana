@@ -117,6 +117,23 @@ vi.mock("../src/db/schema.js", () => ({
     created_at: new Date(),
   })),
   deletePanel: vi.fn(async () => true),
+  updateWidget: vi.fn(async (
+    _tenantId: string,
+    widgetId: number,
+    patch: { title?: string; promql?: string; unit?: string | null; span?: number; kind?: string }
+  ): Promise<Record<string, unknown>> => ({
+    id: widgetId,
+    page_id: 1,
+    tenant_id: _tenantId,
+    kind: patch.kind ?? "stat",
+    title: patch.title ?? "Widget",
+    promql: patch.promql ?? "up",
+    unit: patch.unit ?? null,
+    span: patch.span ?? 1,
+    height_px: patch.heightPx ?? 112,
+    position: 0,
+    created_at: new Date(),
+  })),
   healthcheck: vi.fn(async () => true),
   ensureSchema: vi.fn(async () => undefined),
 }));
@@ -965,6 +982,78 @@ describe("API routes (app.inject)", () => {
       expect(body.activity[0]?.action).toBe("widget.create");
       expect(body.activity[0]?.actorEmail).toBe("a@test.dev");
       expect(body.activity[0]?.target).toBe("CPU");
+    });
+  });
+
+  describe("widget span validation (freeform sizing)", () => {
+    async function getAuthToken(): Promise<string> {
+      const signup = await app.inject({
+        method: "POST",
+        url: "/api/auth/signup",
+        payload: { email: "a@test.dev", password: "password123" },
+      });
+      const { token } = signup.json() as { token: string };
+      return token;
+    }
+
+    it("accepts a span patch anywhere in 1..12", async () => {
+      const token = await getAuthToken();
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/pages/tenant-a/widgets/7",
+        payload: { span: 12 },
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode).toBe(200);
+      const schema = await import("../src/db/schema.js");
+      expect(vi.mocked(schema.updateWidget)).toHaveBeenCalledWith(
+        "tenant-a",
+        7,
+        expect.objectContaining({ span: 12 })
+      );
+    });
+
+    it("rejects span 13 and 0 with 400 (mirrors the DB CHECK)", async () => {
+      const token = await getAuthToken();
+      for (const span of [0, 13]) {
+        const response = await app.inject({
+          method: "PATCH",
+          url: "/api/pages/tenant-a/widgets/7",
+          payload: { span },
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(response.statusCode).toBe(400);
+      }
+    });
+
+    it("accepts a heightPx patch within 60..1200 and persists it", async () => {
+      const token = await getAuthToken();
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/pages/tenant-a/widgets/7",
+        payload: { heightPx: 320 },
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(response.statusCode).toBe(200);
+      const schema = await import("../src/db/schema.js");
+      expect(vi.mocked(schema.updateWidget)).toHaveBeenCalledWith(
+        "tenant-a",
+        7,
+        expect.objectContaining({ heightPx: 320 })
+      );
+    });
+
+    it("rejects heightPx outside 60..1200 with 400 (mirrors the DB CHECK)", async () => {
+      const token = await getAuthToken();
+      for (const heightPx of [30, 1300]) {
+        const response = await app.inject({
+          method: "PATCH",
+          url: "/api/pages/tenant-a/widgets/7",
+          payload: { heightPx },
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(response.statusCode).toBe(400);
+      }
     });
   });
 

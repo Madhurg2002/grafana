@@ -613,13 +613,14 @@ export interface PageWidgetRow {
   promql: string;
   unit: string | null;
   span: number;
+  height_px: number;
   position: number;
   created_at: Date;
 }
 
 export async function listWidgets(pageId: number, tenantId: string): Promise<PageWidgetRow[]> {
   const result = await getPool().query<PageWidgetRow>(
-    `SELECT id, page_id, tenant_id, kind, title, promql, unit, span, position, created_at
+    `SELECT id, page_id, tenant_id, kind, title, promql, unit, span, height_px, position, created_at
      FROM page_widgets WHERE page_id = $1 AND tenant_id = $2
      ORDER BY position, id`,
     [pageId, tenantId]
@@ -635,12 +636,13 @@ export async function createWidget(input: {
   promql: string;
   unit?: string | null;
   span?: number;
+  heightPx?: number;
 }): Promise<PageWidgetRow> {
   const result = await getPool().query<PageWidgetRow>(
-    `INSERT INTO page_widgets (page_id, tenant_id, kind, title, promql, unit, span, position)
-     VALUES ($1, $2, $3, $4, $5, $6, $7,
+    `INSERT INTO page_widgets (page_id, tenant_id, kind, title, promql, unit, span, height_px, position)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
              COALESCE((SELECT MAX(position) + 1 FROM page_widgets WHERE page_id = $1), 0))
-     RETURNING id, page_id, tenant_id, kind, title, promql, unit, span, position, created_at`,
+     RETURNING id, page_id, tenant_id, kind, title, promql, unit, span, height_px, position, created_at`,
     [
       input.pageId,
       input.tenantId,
@@ -649,6 +651,7 @@ export async function createWidget(input: {
       input.promql,
       input.unit ?? null,
       input.span ?? 1,
+      input.heightPx ?? 112,
     ]
   );
   return result.rows[0] as PageWidgetRow;
@@ -657,7 +660,14 @@ export async function createWidget(input: {
 export async function updateWidget(
   tenantId: string,
   widgetId: number,
-  patch: { title?: string; promql?: string; unit?: string | null; span?: number; kind?: WidgetKind }
+  patch: {
+    title?: string;
+    promql?: string;
+    unit?: string | null;
+    span?: number;
+    heightPx?: number;
+    kind?: WidgetKind;
+  }
 ): Promise<PageWidgetRow | null> {
   const sets: string[] = [];
   const values: Array<string | number | null> = [];
@@ -677,6 +687,10 @@ export async function updateWidget(
     values.push(patch.span);
     sets.push(`span = $${values.length}`);
   }
+  if (patch.heightPx !== undefined) {
+    values.push(patch.heightPx);
+    sets.push(`height_px = $${values.length}`);
+  }
   if (patch.kind !== undefined) {
     values.push(patch.kind);
     sets.push(`kind = $${values.length}`);
@@ -688,7 +702,7 @@ export async function updateWidget(
   const result = await getPool().query<PageWidgetRow>(
     `UPDATE page_widgets SET ${sets.join(", ")}
      WHERE id = $${values.length - 1} AND tenant_id = $${values.length}
-     RETURNING id, page_id, tenant_id, kind, title, promql, unit, span, position, created_at`,
+     RETURNING id, page_id, tenant_id, kind, title, promql, unit, span, height_px, position, created_at`,
     values
   );
   return result.rows[0] ?? null;

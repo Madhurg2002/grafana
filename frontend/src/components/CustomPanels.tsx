@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import {
   Copy,
   GripVertical,
@@ -100,23 +100,75 @@ const WIDGET_DEFAULTS: Record<WidgetKind, { title: string; promql: string; unit:
 };
 
 /**
- * Maps a widget's grid span to responsive classes. In wide mode the grid is
- * 6 columns at 2xl (1536px+) and up, so a very large monitor shows a very
- * large number of charts at once (wall-of-graphs like Grafana's TV view).
- *
- * Span 1 (gauges/stats) is deliberately HALF the width of a span-2 sparkline:
- * a dial or a single number needs far less room. The wide grid doubles its
- * column count (4 at sm+, 6 at 2xl+) so gauges (1 col) render at half the
- * width of sparklines (2 cols) on every screen size, not just huge ones.
+ * Maps a widget's grid span to responsive classes. Spans run 1–12 so users
+ * can size a widget however they want (the edit modal and a drag handle on
+ * the card both set it). The grid: 4 columns from sm, 6 at 2xl+ in wide
+ * mode (4 otherwise) — spans map proportionally and clamp per breakpoint.
+ * Classes live in static literal arrays so Tailwind's scanner sees them
+ * (dynamic template strings would never be generated into the CSS).
  */
-function spanClass(span: number, wide = false): string {
-  if (span >= 3) {
-    return wide ? "col-span-1 sm:col-span-4 2xl:col-span-6" : "col-span-1 sm:col-span-2 2xl:col-span-4";
-  }
-  if (span === 2) {
-    return wide ? "col-span-1 sm:col-span-2 2xl:col-span-4" : "col-span-1 2xl:col-span-2";
-  }
-  return wide ? "col-span-1 2xl:col-span-2" : "col-span-1 2xl:col-span-1";
+const SPAN_WIDE_SM = [
+  "sm:col-span-1",
+  "sm:col-span-2",
+  "sm:col-span-2",
+  "sm:col-span-2",
+  "sm:col-span-3",
+  "sm:col-span-3",
+  "sm:col-span-3",
+  "sm:col-span-3",
+  "sm:col-span-4",
+  "sm:col-span-4",
+  "sm:col-span-4",
+  "sm:col-span-4",
+] as const;
+const SPAN_WIDE_XL = [
+  "2xl:col-span-1",
+  "2xl:col-span-1",
+  "2xl:col-span-1",
+  "2xl:col-span-2",
+  "2xl:col-span-2",
+  "2xl:col-span-3",
+  "2xl:col-span-3",
+  "2xl:col-span-4",
+  "2xl:col-span-4",
+  "2xl:col-span-5",
+  "2xl:col-span-5",
+  "2xl:col-span-6",
+] as const;
+const SPAN_NARROW_SM = [
+  "sm:col-span-1",
+  "sm:col-span-1",
+  "sm:col-span-1",
+  "sm:col-span-1",
+  "sm:col-span-1",
+  "sm:col-span-2",
+  "sm:col-span-2",
+  "sm:col-span-2",
+  "sm:col-span-2",
+  "sm:col-span-2",
+  "sm:col-span-2",
+  "sm:col-span-2",
+] as const;
+const SPAN_NARROW_XL = [
+  "2xl:col-span-1",
+  "2xl:col-span-1",
+  "2xl:col-span-1",
+  "2xl:col-span-1",
+  "2xl:col-span-2",
+  "2xl:col-span-2",
+  "2xl:col-span-2",
+  "2xl:col-span-2",
+  "2xl:col-span-3",
+  "2xl:col-span-3",
+  "2xl:col-span-3",
+  "2xl:col-span-4",
+] as const;
+
+function spanClass(spanRaw: number, wide = false): string {
+  const span = Math.max(1, Math.min(12, Math.round(spanRaw)));
+  return wide
+    ? `col-span-1 ${SPAN_WIDE_SM[span - 1]} ${SPAN_WIDE_XL[span - 1]}`
+    : `col-span-1 ${SPAN_NARROW_SM[span - 1]} ${SPAN_NARROW_XL[span - 1]}`;
 }
 
 /**
@@ -158,6 +210,7 @@ function LiveWidget({
         series={range.series}
         stroke={stroke}
         query={query}
+        heightPx={widget.height_px}
       />
     );
   }
@@ -169,6 +222,7 @@ function LiveWidget({
         percent={clamp(value)}
         level={levelFor(value)}
         query={query}
+        heightPx={widget.height_px}
         onExportCsv={(title, percent) => {
           downloadCsv(csvFilename(title), [{
             timestamp: new Date().toISOString(),
@@ -198,6 +252,7 @@ function LiveWidget({
         level="emerald"
         icon={LayoutDashboard}
         subtitle={query.length > 40 ? `${query.slice(0, 40)}…` : query}
+        heightPx={widget.height_px}
       />
       {stat !== null ? (
         <button
@@ -362,6 +417,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
   const [kind, setKind] = useState<WidgetKind>("sparkline");
   const [unit, setUnit] = useState("");
   const [span, setSpan] = useState(1);
+  const [heightPx, setHeightPx] = useState(112);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [renamingPage, setRenamingPage] = useState(false);
@@ -564,6 +620,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
     setPromql(defaults.promql);
     setUnit(defaults.unit);
     setSpan(defaults.span);
+    setHeightPx(112);
   }
 
   async function handleCreate(): Promise<void> {
@@ -577,6 +634,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
         promql: kind === "hosts_table" ? undefined : promql.trim(),
         unit: unit.trim().length > 0 ? unit.trim() : undefined,
         span,
+        heightPx,
       });
       resetForm();
       setAdding(false);
@@ -599,6 +657,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
         ...(kind !== "hosts_table" ? { promql: promql.trim() } : {}),
         unit: unit.trim().length > 0 ? unit.trim() : null,
         span,
+        heightPx,
       });
       setWidgets((current) =>
         current.map((currentWidget) =>
@@ -670,6 +729,71 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
     }
   }
 
+  /**
+   * Drag-to-resize, both axes:
+   *  - right edge / corner: span (1 column per grid gap-to-gap step);
+   *  - bottom edge / corner: pinned pixel height (40px per grid-row feel).
+   * Live-preview via setWidgets; persists span and/or height on release.
+   */
+  function startResize(event: ReactPointerEvent<HTMLSpanElement>, widget: PageWidget, axis: "x" | "y" | "both"): void {
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = event.currentTarget;
+    const gridEl = handle.closest("[data-testid='panel-grid']");
+    if (gridEl === null) {
+      return;
+    }
+    const gridRect = gridEl.getBoundingClientRect();
+    const style = window.getComputedStyle(gridEl);
+    const gap = parseFloat(style.columnGap || style.gap || "16") || 16;
+    const cols = wide ? 6 : 4;
+    const colWidth = (gridRect.width - gap * (cols - 1)) / cols;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startSpan = widget.span;
+    const startHeight = widget.height_px;
+    let lastSpan = startSpan;
+    let lastHeight = startHeight;
+    handle.setPointerCapture(event.pointerId);
+
+    function onMove(moveEvent: PointerEvent): void {
+      if (axis !== "y") {
+        const deltaCols = Math.round((moveEvent.clientX - startX) / (colWidth + gap));
+        const nextSpan = Math.max(1, Math.min(12, startSpan + deltaCols));
+        if (nextSpan !== lastSpan) {
+          lastSpan = nextSpan;
+          setWidgets((prev) =>
+            prev.map((w) => (w.id === widget.id ? { ...w, span: nextSpan } : w))
+          );
+        }
+      }
+      if (axis !== "x") {
+        // 20px per step keeps vertical drags comfortable without overshoot.
+        const nextHeight = Math.max(60, Math.min(1200, startHeight + Math.round((moveEvent.clientY - startY) / 20) * 20));
+        if (nextHeight !== lastHeight) {
+          lastHeight = nextHeight;
+          setWidgets((prev) =>
+            prev.map((w) => (w.id === widget.id ? { ...w, height_px: nextHeight } : w))
+          );
+        }
+      }
+    }
+    function onUp(): void {
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
+      const patch: { span?: number; heightPx?: number } = {};
+      if (lastSpan !== startSpan) patch.span = lastSpan;
+      if (lastHeight !== startHeight) patch.heightPx = lastHeight;
+      if (Object.keys(patch).length > 0) {
+        void updateWidget(tenantId, widget.id, patch).then(() => refresh());
+      }
+    }
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
+  }
+
   function startEdit(widget: PageWidget): void {
     setEditingWidget(widget);
     setTitle(widget.title);
@@ -677,6 +801,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
     setUnit(widget.unit ?? "");
     setKind(widget.kind);
     setSpan(widget.span);
+    setHeightPx(widget.height_px);
     setAdding(true);
   }
 
@@ -1027,11 +1152,27 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 aria-label="Grid width"
                 title="How many grid columns this widget stretches across"
               >
-                <option value={1}>Width: 1 column</option>
-                <option value={2}>Width: 2 columns</option>
-                <option value={3}>Width: full row</option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>
+                    {n === 12 ? "Width: maximum" : `Width: ${n}`}
+                  </option>
+                ))}
               </select>
-              <p className="text-[10px] text-zinc-600">Card size — stretch wide on big screens.</p>
+              <p className="text-[10px] text-zinc-600">Width — or drag the card's right edge.</p>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <input
+                type="number"
+                min={60}
+                max={1200}
+                step={4}
+                value={heightPx}
+                onChange={(e) => setHeightPx(Math.max(60, Math.min(1200, Number(e.target.value) || 112)))}
+                aria-label="Widget height in pixels"
+                title="Pinned pixel height — stays fixed whatever the zoom level"
+                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
+              />
+              <p className="text-[10px] text-zinc-600">Height in px — or drag the bottom edge.</p>
             </div>
             <div className="flex flex-col gap-0.5">
               <input
@@ -1184,6 +1325,37 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
             >
               <GripVertical className="h-3.5 w-3.5" />
             </span>
+            <span
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={`Resize width of ${widget.title}`}
+              title="Drag to resize width — spans 1 to 12"
+              data-testid={`resize-handle-x-${widget.id}`}
+              className="absolute -right-1.5 top-0 z-10 flex h-full w-3 cursor-ew-resize touch-none items-center justify-center opacity-0 transition group-hover:opacity-100"
+              onPointerDown={(e) => startResize(e, widget, "x")}
+            >
+              <span className="h-10 w-1 rounded-full bg-zinc-700 transition group-hover:bg-emerald-500/60" />
+            </span>
+            <span
+              role="separator"
+              aria-label={`Resize height of ${widget.title}`}
+              title="Drag to resize height — 60 to 1200px"
+              data-testid={`resize-handle-y-${widget.id}`}
+              className="absolute -bottom-1.5 left-0 z-10 flex h-3 w-full cursor-ns-resize touch-none items-center justify-center opacity-0 transition group-hover:opacity-100"
+              onPointerDown={(e) => startResize(e, widget, "y")}
+            >
+              <span className="h-1 w-10 rounded-full bg-zinc-700 transition group-hover:bg-emerald-500/60" />
+            </span>
+            <span
+              role="separator"
+              aria-label={`Resize ${widget.title} in both directions`}
+              title="Drag to resize width and height"
+              data-testid={`resize-handle-xy-${widget.id}`}
+              className="absolute -bottom-1.5 -right-1.5 z-10 h-4 w-4 cursor-nwse-resize touch-none rounded-sm opacity-0 transition group-hover:opacity-100"
+              onPointerDown={(e) => startResize(e, widget, "both")}
+            >
+              <span className="absolute bottom-0.5 right-0.5 h-2 w-2 border-b-2 border-r-2 border-zinc-600 transition group-hover:border-emerald-500/70" />
+            </span>
             <LiveWidget
               widget={{ ...widget, onSelectHost: setSelectedHost } as WidgetWithHost}
               index={index}
@@ -1194,11 +1366,11 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               <button
                 type="button"
                 aria-label={`Widen ${widget.title}`}
-                title={widget.span >= 3 ? "Already full width" : "Stretch wider"}
+                title={widget.span >= 12 ? "Already maximum width" : "Stretch wider"}
                 className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30"
-                disabled={widget.span >= 3}
+                disabled={widget.span >= 12}
                 onClick={() => {
-                  void updateWidget(tenantId, widget.id, { span: Math.min(widget.span + 1, 3) }).then(
+                  void updateWidget(tenantId, widget.id, { span: Math.min(widget.span + 1, 12) }).then(
                     () => refresh()
                   );
                 }}
