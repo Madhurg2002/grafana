@@ -35,13 +35,38 @@ import {
 import { useAuth } from "../hooks/useAuth";
 
 /**
- * /profile — one place to manage sharing:
+ * Account area. `/profile` is a hub; each section is also its own sub-page
+ * (`/profile/security`, `/profile/sharing`, `/profile/orgs`,
+ * `/profile/activity`) so the account surface is directly linkable.
+ *
+ * The hub keeps everything inline (one-page overview, as before). A sub-page
+ * renders only its own section plus a back link to the hub.
+ *
  *  - "Created by me": every link the user made, with access level and a
  *    revoke action (revoked links stay visible, marked).
  *  - "Shared with me": email-restricted links other users allowed this
  *    account's address to open. Revoked ones are flagged.
  */
-export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
+
+/** The four account sub-pages; `null` = the hub (everything inline). */
+export type ProfilePage =
+  | "security"
+  | "sharing"
+  | "orgs"
+  | "activity"
+  | null;
+
+export function ProfileView({
+  onBack,
+  page = null,
+  navigate,
+}: {
+  onBack: () => void;
+  /** Which sub-page to render; omit for the all-in-one hub. */
+  page?: ProfilePage;
+  /** SPA navigation from the app shell — tabs switch without a reload. */
+  navigate?: (path: string) => void;
+}): JSX.Element {
   const { user, applyAuth, token, logout } = useAuth();
   const [created, setCreated] = useState<ProfileShare[]>([]);
   const [sharedWithMe, setSharedWithMe] = useState<ProfileShare[]>([]);
@@ -59,36 +84,18 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleteInProgress, setDeleteInProgress] = useState(false);
-
-  // Org state.
+  // Organizations state.
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
-  const [membersCache, setMembersCache] = useState<Record<string, OrgMember[]>>({});
   const [newOrgName, setNewOrgName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [orgBusy, setOrgBusy] = useState(false);
   const [orgMessage, setOrgMessage] = useState<string | null>(null);
   const [orgError, setOrgError] = useState<string | null>(null);
-
-  // Workspace activity (audit trail) — loaded lazily on first expand.
+  const [membersCache, setMembersCache] = useState<Record<string, OrgMember[]>>(
+    {}
+  );
+  // Activity state.
   const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
-  const [activityOpen, setActivityOpen] = useState(false);
-
-  useEffect(() => {
-    if (!activityOpen || activity !== null || user === null) {
-      return;
-    }
-    let cancelled = false;
-    fetchActivity(user.tenantId)
-      .then((payload) => {
-        if (!cancelled) setActivity(payload.activity);
-      })
-      .catch(() => {
-        if (!cancelled) setActivity([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activityOpen, activity, user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -126,6 +133,27 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
       cancelled = true;
     };
   }, []);
+
+  // Sub-page /activity always loads the trail; on the hub it stays lazy
+  // behind the Show toggle as before.
+  const [activityOpen, setActivityOpen] = useState(page === "activity");
+
+  useEffect(() => {
+    if (!activityOpen || activity !== null || user === null) {
+      return;
+    }
+    let cancelled = false;
+    fetchActivity(user.tenantId)
+      .then((payload) => {
+        if (!cancelled) setActivity(payload.activity);
+      })
+      .catch(() => {
+        if (!cancelled) setActivity([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activityOpen, activity, user]);
 
   function expandOrg(org: OrgSummary): void {
     if (membersCache[org.id] !== undefined) {
@@ -325,6 +353,32 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
     );
   };
 
+  // Sub-page visibility: on a sub-page only its own section renders.
+  const showSecurity = page === null || page === "security";
+  const showSharing = page === null || page === "sharing";
+  const showOrgs = page === null || page === "orgs";
+  const showActivity = page === null || page === "activity";
+  const hubTitle =
+    page === "security"
+      ? "Security"
+      : page === "sharing"
+        ? "Sharing"
+        : page === "orgs"
+          ? "Organizations"
+          : page === "activity"
+            ? "Activity"
+            : "Profile";
+  const hubSubtitle =
+    page === null
+      ? "Account settings, your organizations, and everything shared — including anything that's been revoked."
+      : page === "security"
+        ? "Display name, password, and the irreversible deletion path."
+        : page === "sharing"
+          ? "Links you've created and dashboards shared with your email."
+          : page === "orgs"
+            ? "Create, join, and attach your workspace to team organizations."
+            : "Who changed what in your workspace — newest first.";
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md">
@@ -350,13 +404,54 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
       </header>
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8 sm:px-6">
-        <h1 className="text-lg font-semibold tracking-tight">Profile</h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Account settings, your organizations, and everything shared —
-          including anything that's been revoked.
-        </p>
+        <nav aria-label="Account sections" className="flex flex-wrap items-center gap-1.5 text-xs">
+          {(
+            [
+              [null, "Overview"],
+              ["security", "Security"],
+              ["sharing", "Sharing"],
+              ["orgs", "Organizations"],
+              ["activity", "Activity"],
+            ] as Array<[ProfilePage, string]>
+          ).map(([target, label]) => {
+            const targetPath = target === null ? "/profile" : `/profile/${target}`;
+            const active = page === target;
+            return (
+              <a
+                key={label}
+                href={targetPath}
+                title={
+                  target === null
+                    ? "All account sections on one page"
+                    : `Open the ${label.toLowerCase()} section`
+                }
+                data-testid={`profile-tab-${target ?? "overview"}`}
+                aria-current={active ? "page" : undefined}
+                onClick={(e) => {
+                  // Instant tab switch when the app shell provides SPA
+                  // navigation; the href stays for middle-click/new-tab.
+                  if (navigate !== undefined) {
+                    e.preventDefault();
+                    navigate(targetPath);
+                  }
+                }}
+                className={`rounded-lg border px-2.5 py-1 transition ${
+                  active
+                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                    : "border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+                }`}
+              >
+                {label}
+              </a>
+            );
+          })}
+        </nav>
+
+        <h1 className="mt-5 text-lg font-semibold tracking-tight">{hubTitle}</h1>
+        <p className="mt-1 text-sm text-zinc-400">{hubSubtitle}</p>
 
         {/* Account settings: display name + password change. */}
+        {showSecurity ? (
         <section className="mt-8" data-testid="account-settings">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
             <ShieldCheck className="h-4 w-4 text-emerald-300" aria-hidden />
@@ -486,8 +581,10 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
             )}
           </div>
         </section>
+        ) : null}
 
         {/* Organizations: create/join, attach workspace, member roster. */}
+        {showOrgs ? (
         <section className="mt-8" data-testid="orgs-section">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
             <Building2 className="h-4 w-4 text-emerald-300" aria-hidden />
@@ -648,6 +745,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
             </button>
           ) : null}
         </section>
+        ) : null}
 
         {error !== null ? (
           <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300" role="alert">
@@ -656,7 +754,9 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
         ) : null}
 
         {/* Workspace activity: who changed what (audit trail). */}
+        {showActivity ? (
         <section className="mt-8" data-testid="activity-section">
+          {page === null ? (
           <button
             type="button"
             onClick={() => setActivityOpen((open) => !open)}
@@ -670,6 +770,15 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
             </span>
             <span className="ml-auto text-xs text-zinc-500">{activityOpen ? "Hide" : "Show"}</span>
           </button>
+          ) : (
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
+            <History className="h-4 w-4 text-emerald-300" aria-hidden />
+            Activity
+            <span className="text-xs font-normal text-zinc-500">
+              who changed what in your workspace
+            </span>
+          </h2>
+          )}
           {activityOpen ? (
             activity === null ? (
               <p className="mt-2 text-sm text-zinc-500">Loading activity…</p>
@@ -705,10 +814,13 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
             )
           ) : null}
         </section>
+        ) : null}
 
         {loading ? (
-          <p className="mt-8 text-sm text-zinc-500">Loading shares…</p>
-        ) : (
+          showSharing ? (
+            <p className="mt-8 text-sm text-zinc-500">Loading shares…</p>
+          ) : null
+        ) : showSharing ? (
           <>
             <section className="mt-6">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
@@ -848,7 +960,7 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
               )}
             </section>
           </>
-        )}
+        ) : null}
       </main>
     </div>
   );

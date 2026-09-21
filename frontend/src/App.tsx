@@ -5,7 +5,7 @@ import { AuthForm } from "./components/AuthForm";
 import { ConnectForm } from "./components/ConnectForm";
 import { DashboardView } from "./components/DashboardView";
 import { ShareView } from "./components/ShareView";
-import { ProfileView } from "./components/ProfileView";
+import { ProfileView, type ProfilePage } from "./components/ProfileView";
 import { LegalPage } from "./components/LegalPage";
 import { ResetPage } from "./components/ResetPage";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
@@ -28,7 +28,7 @@ type Route =
   | { name: "home" }
   | { name: "auth"; mode: "login" | "signup" }
   | { name: "share"; id: string }
-  | { name: "profile" }
+  | { name: "profile"; page: ProfilePage }
   | { name: "reset" }
   | { name: "legal"; doc: "privacy" | "terms" }
   | { name: "not-found"; path: string };
@@ -47,7 +47,11 @@ function parseRoute(): Route {
     return { name: "auth", mode: "signup" };
   }
   if (path === "/profile") {
-    return { name: "profile" };
+    return { name: "profile", page: null };
+  }
+  const profileMatch = /^\/profile\/(security|sharing|orgs|activity)$/.exec(path);
+  if (profileMatch !== null) {
+    return { name: "profile", page: profileMatch[1] as ProfilePage };
   }
   if (path === "/reset") {
     return { name: "reset" };
@@ -141,6 +145,8 @@ function SignedInApp(): JSX.Element {
   if (route.name === "profile") {
     return (
       <ProfileView
+        page={route.page}
+        navigate={navigate}
         onBack={() => {
           navigate("/");
         }}

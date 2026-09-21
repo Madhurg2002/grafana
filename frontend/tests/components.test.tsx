@@ -464,6 +464,108 @@ describe("AuthForm", () => {
   });
 });
 
+describe("ProfileView sub-pages", () => {
+  /** Fetch mock covering the two profile endpoints the view loads. */
+  function stubProfileFetches(): void {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/profile/shares")) {
+          return new Response(
+            JSON.stringify({
+              created: [
+                {
+                  id: "shr_1",
+                  url: "/share/shr_1",
+                  label: "ops",
+                  access: "link_view",
+                  allowedEmails: [],
+                  revoked: false,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+              sharedWithMe: [],
+            }),
+            { status: 200 }
+          );
+        }
+        if (url.includes("/api/profile/activity")) {
+          return new Response(JSON.stringify({ activity: [] }), { status: 200 });
+        }
+        if (url.includes("/api/orgs")) {
+          return new Response(JSON.stringify({ orgs: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({}), { status: 200 });
+      })
+    );
+  }
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it("renders only the security section on /profile/security, with tab nav", async () => {
+    stubProfileFetches();
+    const { ProfileView } = await import("../src/components/ProfileView");
+    render(
+      <AuthProvider>
+        <ProfileView page="security" onBack={() => undefined} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("account-settings")).toBeTruthy();
+    });
+    // Own section present.
+    expect(screen.getByTestId("danger-zone")).toBeTruthy();
+    // Other sections absent on this sub-page.
+    expect(screen.queryByTestId("orgs-section")).toBeNull();
+    expect(screen.queryByTestId("activity-section")).toBeNull();
+    expect(screen.queryByText(/Created by me/)).toBeNull();
+    // Tab navigation present and marks the active page.
+    expect(screen.getByTestId("profile-tab-security").getAttribute("aria-current")).toBe("page");
+    expect(screen.getByTestId("profile-tab-overview").getAttribute("href")).toBe("/profile");
+  });
+
+  it("renders only sharing lists on /profile/sharing", async () => {
+    stubProfileFetches();
+    const { ProfileView } = await import("../src/components/ProfileView");
+    render(
+      <AuthProvider>
+        <ProfileView page="sharing" onBack={() => undefined} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Created by me/)).toBeTruthy();
+    });
+    expect(screen.queryByTestId("account-settings")).toBeNull();
+    expect(screen.queryByTestId("orgs-section")).toBeNull();
+    expect(screen.getByTestId("profile-tab-sharing").getAttribute("aria-current")).toBe("page");
+  });
+
+  it("keeps the hub all-in-one: every section renders with no page prop", async () => {
+    stubProfileFetches();
+    const { ProfileView } = await import("../src/components/ProfileView");
+    render(
+      <AuthProvider>
+        <ProfileView onBack={() => undefined} />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/Created by me/)).toBeTruthy();
+    });
+    expect(screen.getByTestId("account-settings")).toBeTruthy();
+    expect(screen.getByTestId("orgs-section")).toBeTruthy();
+    expect(screen.getByTestId("activity-section")).toBeTruthy();
+    // No tab is marked active on the hub beyond Overview.
+    expect(screen.getByTestId("profile-tab-overview").getAttribute("aria-current")).toBe("page");
+  });
+});
+
 describe("ResetPage", () => {
   it("requests a reset link and surfaces the dev fallback link when mail is unconfigured", async () => {
     const user = userEvent.setup();
