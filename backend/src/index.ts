@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
 import { getEnv } from "./config/env.js";
 import { registerRateLimit } from "./middleware/rateLimit.js";
 import { connectRoutes } from "./routes/connect.js";
@@ -42,6 +43,33 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     credentials: true,
   });
   await registerRateLimit(app);
+
+  // Security headers on every response. CSP allows the Vercel origin's own
+  // assets + inline styles (Tailwind runtime classes); connect-src permits the
+  // configured API origins for XHR/SSE. In API-only test mode the defaults are
+  // harmless.
+  const apiOrigins = allowedOrigins.filter((o) => o !== "*");
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", ...apiOrigins],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+        frameAncestors: ["'self'"],
+      },
+    },
+    // SSE streams over the same origin — no cross-origin framing needed.
+    frameguard: { action: "deny" },
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+    },
+  });
 
   app.get("/api/health", async (_request, reply) => {
     let db = false;

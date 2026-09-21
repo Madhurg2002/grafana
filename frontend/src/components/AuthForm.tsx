@@ -158,6 +158,17 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
           {mode === "signup" ? "Sign in" : "Create an account"}
         </button>
       </p>
+
+      <p className="mt-6 text-center text-[11px] text-zinc-600">
+        By continuing you agree to our{" "}
+        <a href="/terms" className="underline-offset-2 hover:text-zinc-400 hover:underline">
+          Terms of Service
+        </a>{" "}
+        and acknowledge our{" "}
+        <a href="/privacy" className="underline-offset-2 hover:text-zinc-400 hover:underline">
+          Privacy Policy
+        </a>.
+      </p>
     </motion.div>
   );
 }

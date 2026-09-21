@@ -9,7 +9,9 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 
 ## 🔴 Now — before the next real user cohort
 
-No remaining items.
+| Item | Why it matters | When / trigger |
+| :--- | :--- | :--- |
+| Production env check for helmet CSP `connectSrc` | The CSP `connectSrc` allow-list is built from `CORS_ORIGIN` at boot. When a new frontend origin is added (e.g. a preview domain), verify the deployed `CORS_ORIGIN` includes it or API calls get blocked in the browser. | Next time an origin is added or the deploy config changes |
 
 ## 🟠 Soon — hardening while the app is in real use
 

@@ -6,6 +6,7 @@ import { ConnectForm } from "./components/ConnectForm";
 import { DashboardView } from "./components/DashboardView";
 import { ShareView } from "./components/ShareView";
 import { ProfileView } from "./components/ProfileView";
+import { LegalPage } from "./components/LegalPage";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
 import { fetchConnectionInfo, type ConnectionInfo } from "./lib/api";
 
@@ -27,6 +28,7 @@ type Route =
   | { name: "auth"; mode: "login" | "signup" }
   | { name: "share"; id: string }
   | { name: "profile" }
+  | { name: "legal"; doc: "privacy" | "terms" }
   | { name: "not-found"; path: string };
 
 function parseRoute(): Route {
@@ -44,6 +46,12 @@ function parseRoute(): Route {
   }
   if (path === "/profile") {
     return { name: "profile" };
+  }
+  if (path === "/privacy") {
+    return { name: "legal", doc: "privacy" as const };
+  }
+  if (path === "/terms") {
+    return { name: "legal", doc: "terms" as const };
   }
   if (path === "/" || path === "/index.html") {
     return { name: "home" };
@@ -320,6 +328,23 @@ function Home(): JSX.Element {
           or connect without an account
         </button>
       </div>
+      <footer className="absolute bottom-4 w-full text-center text-[11px] text-zinc-600">
+        <a
+          href="/terms"
+          title="Terms of Service"
+          className="underline-offset-2 hover:text-zinc-400 hover:underline"
+        >
+          Terms
+        </a>
+        <span className="mx-2">·</span>
+        <a
+          href="/privacy"
+          title="Privacy Policy"
+          className="underline-offset-2 hover:text-zinc-400 hover:underline"
+        >
+          Privacy
+        </a>
+      </footer>
     </div>
   );
 }/** Legacy no-account connect → dashboard flow. */
@@ -426,6 +451,9 @@ function Router(): JSX.Element {
   }
   if (route.name === "auth") {
     return <AuthPage mode={route.mode} />;
+  }
+  if (route.name === "legal") {
+    return <LegalPage doc={route.doc} />;
   }
   if (route.name === "not-found") {
     return <NotFoundPage path={route.path} />;

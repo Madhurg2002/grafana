@@ -413,3 +413,53 @@ export async function getTenantOrg(tenantId: string): Promise<string | null> {
 export async function detachTenantFromOrg(tenantId: string): Promise<void> {
   await getPool().query("UPDATE tenants SET org_id = NULL WHERE id = $1", [tenantId]);
 }
+
+// ---------------------------------------------------------------------------
+// Account deletion (privacy policy / GDPR-style data removal).
+// ---------------------------------------------------------------------------
+
+/**
+ * Hard-deletes a user account in one transaction:
+ *  - the owned tenant (dashboards, widgets, connections, alerts, shares)
+ *    cascades away via `tenants.owner_id ON DELETE CASCADE` semantics — the
+ *    tenant itself is deleted with its owner;
+ *  - org memberships cascade (`org_members.user_id ON DELETE CASCADE`);
+ *  - orgs the user created keep living (`created_by ON DELETE SET NULL`);
+ *  - share links they created keep their targets (creator set to NULL).
+ *
+ * Returns the deleted email so the client can confirm which account went.
+ */
+export async function deleteUserAccount(
+  userId: string
+): Promise<{ email: string } | null> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const current = await client.query<{ email: string; tenant_id: string | null }>(
+      `SELECT u.email, t.id AS tenant_id
+       FROM users u
+       LEFT JOIN tenants t ON t.owner_id = u.id
+       WHERE u.id = $1`,
+      [userId]
+    );
+    const row = current.rows[0];
+    if (row === undefined) {
+      await client.query("ROLLBACK");
+      return null;
+    }
+    if (row.tenant_id !== null) {
+      // Cascades: connections, pages, widgets, alerts, share links, audit log.
+      await client.query("DELETE FROM tenants WHERE id = $1", [row.tenant_id]);
+    }
+    // Org membership rows cascade on user delete; created orgs survive.
+    await client.query("DELETE FROM users WHERE id = $1", [userId]);
+    await client.query("COMMIT");
+    return { email: row.email };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}

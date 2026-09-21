@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { requireUser } from "../middleware/auth.js";
 import {
+  deleteUserAccount,
   listSharesCreatedBy,
   listSharesForEmail,
   searchUsers,
@@ -113,5 +114,31 @@ export async function profileRoutes(app: FastifyInstance): Promise<void> {
         createdAt: row.created_at,
       })),
     });
+  });
+
+  /**
+   * DELETE /api/profile/me — irreversible account deletion (privacy policy).
+   * Requires the literal word "DELETE" as confirmation. Removes the account,
+   * its owned workspace (dashboards, connections, alerts, shares), and org
+   * memberships. Sessions die on next request (user lookup fails).
+   */
+  app.delete("/api/profile/me", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (user === null) {
+      return reply;
+    }
+    const parsed = z
+      .object({ confirm: z.literal("DELETE") })
+      .safeParse(request.body);
+    if (!parsed.success) {
+      return reply.code(400).send({
+        error: "Send { \"confirm\": \"DELETE\" } to confirm account deletion",
+      });
+    }
+    const deleted = await deleteUserAccount(user.sub);
+    if (deleted === null) {
+      return reply.code(404).send({ error: "Account no longer exists" });
+    }
+    return reply.code(200).send({ deleted: true, email: deleted.email });
   });
 }

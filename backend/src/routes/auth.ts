@@ -8,6 +8,7 @@ import {
   findUserById,
 } from "../db/users.js";
 import { issueUserToken, requireUser } from "../middleware/auth.js";
+import { authRateLimitOptions } from "../middleware/rateLimit.js";
 
 const signupSchema = z.object({
   email: z.string().email().max(254),
@@ -27,7 +28,10 @@ export interface AuthResponse {
 
 /** POST /api/auth/signup, /api/auth/login, GET /api/auth/me */
 export async function authRoutes(app: FastifyInstance): Promise<void> {
-  app.post<{ Body: unknown }>("/api/auth/signup", async (request, reply) => {
+  app.post<{ Body: unknown }>(
+    "/api/auth/signup",
+    { config: authRateLimitOptions() },
+    async (request, reply) => {
     const parsed = signupSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({
@@ -66,7 +70,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       },
     };
     return reply.code(201).send(response);
-  });
+    }
+  );
 
   /** GET /api/auth/me — session restore for the client. */
   app.get("/api/auth/me", async (request, reply) => {
@@ -92,7 +97,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     });
   });
 
-  app.post<{ Body: unknown }>("/api/auth/login", async (request, reply) => {
+  app.post<{ Body: unknown }>(
+    "/api/auth/login",
+    { config: authRateLimitOptions() },
+    async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.code(400).send({ error: "Invalid request body" });
@@ -125,5 +133,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       },
     };
     return reply.code(200).send(response);
-  });
+    }
+  );
 }

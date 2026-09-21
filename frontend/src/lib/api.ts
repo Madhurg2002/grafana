@@ -1110,3 +1110,14 @@ export function updateProfile(displayName: string): Promise<{
     body: JSON.stringify({ displayName }),
   });
 }
+
+/**
+ * Irreversibly deletes the signed-in account (privacy policy / data removal).
+ * Requires the literal `DELETE` confirmation string server-side.
+ */
+export function deleteAccount(): Promise<{ deleted: boolean; email: string }> {
+  return authedJson<{ deleted: boolean; email: string }>("/api/profile/me", {
+    method: "DELETE",
+    body: JSON.stringify({ confirm: "DELETE" }),
+  });
+}

@@ -9,6 +9,7 @@ import {
   Radio,
   Send,
   ShieldCheck,
+  TriangleAlert,
   UserPlus,
   X,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import {
   attachTenantToOrg,
   changePassword,
   createOrg,
+  deleteAccount,
   detachTenantFromOrg,
   fetchActivity,
   fetchProfileShares,
@@ -40,7 +42,7 @@ import { useAuth } from "../hooks/useAuth";
  *    account's address to open. Revoked ones are flagged.
  */
 export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
-  const { user, applyAuth, token } = useAuth();
+  const { user, applyAuth, token, logout } = useAuth();
   const [created, setCreated] = useState<ProfileShare[]>([]);
   const [sharedWithMe, setSharedWithMe] = useState<ProfileShare[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +55,10 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
   const [newPassword, setNewPassword] = useState("");
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
+  // Account deletion (danger zone) state.
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
 
   // Org state.
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
@@ -253,6 +259,24 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
     }
   }
 
+  /** Irreversible: deletes the account server-side, then hard-logs out. */
+  async function handleDeleteAccount(): Promise<void> {
+    if (deleteConfirmText !== "DELETE" || deleteInProgress) {
+      return;
+    }
+    setDeleteInProgress(true);
+    try {
+      await deleteAccount();
+      logout();
+      onBack();
+    } catch {
+      setDeleteInProgress(false);
+      setDeleteArmed(false);
+      setDeleteConfirmText("");
+      setAccountError("Failed to delete the account — try again in a moment");
+    }
+  }
+
   async function handleRevoke(share: ProfileShare): Promise<void> {
     setError(null);
     try {
@@ -406,6 +430,61 @@ export function ProfileView({ onBack }: { onBack: () => void }): JSX.Element {
           {accountError !== null ? (
             <p className="mt-2 text-xs text-rose-300" role="alert">{accountError}</p>
           ) : null}
+
+          {/* Danger zone — privacy policy data-removal right. Two-step:
+              first reveal, then type DELETE to arm the button. */}
+          <div className="mt-4 rounded-xl border border-rose-900/50 p-4" data-testid="danger-zone">
+            <p className="flex items-center gap-1 text-xs font-semibold text-rose-300">
+              <TriangleAlert className="h-3 w-3" aria-hidden />
+              Delete account
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              Permanently removes your account, your workspace (dashboards,
+              widgets, connections, alerts, and every share link), and your
+              org memberships. This cannot be undone.
+            </p>
+            {deleteArmed ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder='Type DELETE to confirm'
+                  aria-label='Type DELETE to confirm account deletion'
+                  className="w-44 rounded-lg border border-rose-900/60 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-rose-500/60"
+                />
+                <button
+                  type="button"
+                  disabled={deleteConfirmText !== "DELETE" || deleteInProgress}
+                  data-testid="delete-account-confirm"
+                  className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-rose-500 disabled:opacity-40"
+                  onClick={() => {
+                    void handleDeleteAccount();
+                  }}
+                >
+                  {deleteInProgress ? "Deleting…" : "Permanently delete"}
+                </button>
+                <button
+                  type="button"
+                  className="text-xs text-zinc-500 hover:text-zinc-300"
+                  onClick={() => {
+                    setDeleteArmed(false);
+                    setDeleteConfirmText("");
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                data-testid="delete-account-arm"
+                className="mt-2 rounded-lg border border-rose-900/60 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-500/60 hover:text-rose-200"
+                onClick={() => setDeleteArmed(true)}
+              >
+                Delete my account…
+              </button>
+            )}
+          </div>
         </section>
 
         {/* Organizations: create/join, attach workspace, member roster. */}
