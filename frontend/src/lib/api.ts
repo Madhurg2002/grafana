@@ -51,6 +51,46 @@ export function apiBase(): string {
   return API_BASE.replace(/\/$/, "");
 }
 
+/**
+ * Alive signal for the free-tier API (docs/capabilities.md — Homepage alive
+ * signal). Render spins the service down when idle, so a visitor's first real
+ * request can otherwise stall for ~50s. Landing on the homepage pings
+ * `/api/health` instead, fire-and-forget: failures stay silent, the result is
+ * advisory, and the ping is throttled per tab so it can never become a poll.
+ */
+const ALIVE_PING_KEY = "passthrough.alivePingAt";
+const ALIVE_PING_THROTTLE_MS = 30_000;
+const ALIVE_PING_TIMEOUT_MS = 20_000;
+
+export async function pingBackend(): Promise<boolean> {
+  try {
+    const last = Number(sessionStorage.getItem(ALIVE_PING_KEY) ?? "0");
+    if (Number.isFinite(last) && Date.now() - last < ALIVE_PING_THROTTLE_MS) {
+      return true;
+    }
+    sessionStorage.setItem(ALIVE_PING_KEY, String(Date.now()));
+  } catch {
+    // Storage unavailable (private mode, SSR) — ping anyway.
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ALIVE_PING_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${API_BASE}/api/health`, {
+      method: "GET",
+      cache: "no-store",
+      // Never send workspace credentials to a liveness probe.
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    // A sleeping or unreachable backend is not a page error.
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Forgot-password flow (public, unauthenticated).
 // ---------------------------------------------------------------------------

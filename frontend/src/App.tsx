@@ -16,7 +16,7 @@ import { ProfileView, type ProfilePage } from "./components/ProfileView";
 import { LegalPage } from "./components/LegalPage";
 import { ResetPage } from "./components/ResetPage";
 import { AuthProvider, useAuth } from "./hooks/useAuth";
-import { fetchConnectionInfo, fetchFiringAlerts, type ConnectionInfo } from "./lib/api";
+import { fetchConnectionInfo, fetchFiringAlerts, type ConnectionInfo, pingBackend } from "./lib/api";
 
 /** Window event the SSE hook fires on every alert transition (firing/resolved). */
 export const ALERT_EVENT = "passthrough:alert";
@@ -373,6 +373,20 @@ function SignedInApp(): JSX.Element {
 function Home(): JSX.Element {
   const { token, user, ready } = useAuth();
   const [connected, setConnected] = useState<boolean>(false);
+
+  // Someone is on the homepage: wake the API before they need it. Returning to
+  // the tab pings again (throttled in pingBackend), so a sleeping instance has
+  // usually booted by the time a real request is made.
+  useEffect(() => {
+    void pingBackend();
+    const onVisibility = (): void => {
+      if (document.visibilityState === "visible") {
+        void pingBackend();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
 
   if (!ready) {
     return (

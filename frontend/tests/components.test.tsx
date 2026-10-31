@@ -817,3 +817,37 @@ describe("AlertManager acknowledgement", () => {
     });
   });
 });
+
+describe("backend alive signal", () => {
+  afterEach(() => {
+    sessionStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it("pings /api/health and throttles repeat visits", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response("{}", { status: 200 })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { pingBackend } = await import("../src/lib/api");
+
+    await expect(pingBackend()).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/health");
+
+    // A second homepage visit inside the window must not hit the network.
+    await expect(pingBackend()).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays silent when the API is unreachable", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      })
+    );
+    const { pingBackend } = await import("../src/lib/api");
+    await expect(pingBackend()).resolves.toBe(false);
+  });
+});
