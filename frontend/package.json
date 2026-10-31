@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit && tsc -p tsconfig.test.json --noEmit"
   },
   "dependencies": {
     "framer-motion": "^11.15.0",

@@ -14,7 +14,8 @@ import { alertRoutes } from "./routes/alerts.js";
 import { getAlertEvaluator } from "./services/alertEvaluator.js";
 import { getCircuitBreaker } from "./services/circuitBreaker.js";
 import { healthcheck } from "./db/schema.js";
-import { bootstrapDatabase } from "./db/bootstrap.js";
+import { startDatabaseSupervisor } from "./db/bootstrap.js";
+import { getDatabaseStatus, isDatabaseReady } from "./db/status.js";
 
 export interface BuildAppOptions {
   /** Skip DB-backed plugins (used by unit tests). */
@@ -81,11 +82,49 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       }
     }
     const breaker = getCircuitBreaker().status();
+    // Liveness always answers 200: the process is up and serving. Database
+    // state is reported in the body (and hard on /api/health/ready) so a dead
+    // Postgres reads as a diagnosable degradation, not a failed deploy.
     return reply.code(200).send({
-      status: "ok",
+      status: db ? "ok" : "degraded",
       db,
+      database: getDatabaseStatus(),
       circuit: breaker.state,
       uptimeSeconds: Math.floor(process.uptime()),
+    });
+  });
+
+  /** Readiness: 503 until the schema is migrated and the pool answers. */
+  app.get("/api/health/ready", async (_request, reply) => {
+    const database = getDatabaseStatus();
+    if (database.ready) {
+      return reply.code(200).send({ status: "ready" });
+    }
+    await reply.code(503).send({
+      error: "Database unavailable",
+      details: [
+        { path: "database", message: database.hint ?? database.lastError ?? "Not connected" },
+      ],
+    });
+  });
+
+  // Fail closed, but diagnosably: while the database is unreachable every data
+  // route answers 503 with the supervisor's explanation instead of leaking a pg
+  // stack trace. The health routes above stay open so the platform can see why.
+  app.addHook("onRequest", async (request, reply) => {
+    if (options.skipDb || isDatabaseReady()) {
+      return;
+    }
+    const path = request.url.split("?")[0] ?? "";
+    if (!path.startsWith("/api/") || path.startsWith("/api/health")) {
+      return;
+    }
+    const database = getDatabaseStatus();
+    await reply.code(503).send({
+      error: "Database unavailable",
+      details: [
+        { path: "database", message: database.hint ?? database.lastError ?? "Not connected" },
+      ],
     });
   });
 
@@ -112,19 +151,24 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 export async function startServer(): Promise<void> {
   const env = getEnv();
   const app = await buildApp();
-  try {
-    // Initialize/migrate the tenant & connection tables before accepting
-    // traffic (bounded retry to tolerate a still-starting PostgreSQL).
-    await bootstrapDatabase();
-    app.log.info("Database schema initialized");
-  } catch (error) {
-    app.log.error(error, "Database unreachable — check DATABASE_URL");
-    await app.close();
-    process.exit(1);
-  }
-  // Threshold-alert evaluator: one background scan loop for all tenants.
-  getAlertEvaluator().start();
-  app.log.info("Alert evaluator started");
+  // The database is a hard dependency at runtime but not at boot: a missing
+  // instance (deleted Postgres, DNS failure) must not crash-loop the service
+  // and fail the deploy. The supervisor retries with backoff while
+  // /api/health reports exactly why, and the evaluator starts once it is ready.
+  startDatabaseSupervisor({
+    onReady: () => {
+      app.log.info("Database schema initialized");
+      // Threshold-alert evaluator: one background scan loop for all tenants.
+      getAlertEvaluator().start();
+      app.log.info("Alert evaluator started");
+    },
+    onFailure: (status, nextRetryInMs) => {
+      app.log.error(
+        { database: status },
+        `Database unreachable — retrying in ${Math.round(nextRetryInMs / 1000)}s; the API keeps serving /api/health`
+      );
+    },
+  });
   try {
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Backend listening on :${env.PORT}`);

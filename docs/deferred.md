@@ -23,3 +23,4 @@
 | Production analytics and error tracking | No Sentry or analytics provider is currently wired. | At public launch |
 | Scheduled live-upstream CI checks | The live suite is gated by `TEST_PROMETHEUS_URL` and a reachable test database. | When CI service/database resources are available |
 | Real alert webhook deliverability check | Automated tests cover payloads, retries, and SSRF protection; a real Slack, Discord, or webhook receiver still needs an end-to-end check. | When someone configures a real webhook receiver |
+| Automated database backups | There is no scheduled dump/restore path. A deleted or expired managed Postgres (e.g. the free Render tier, which drops instances after 30 days) loses every workspace, encrypted connection, page and alert with no recovery; the app now reports the outage but cannot restore it. | Before this deployment holds data anyone would miss |
