@@ -135,8 +135,8 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
       onClick={() => setAudience(key)}
       className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
         audience === key
-          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
-          : "border-zinc-800 text-zinc-400 hover:border-zinc-600"
+          ? "border-[#5eead4]/50 bg-[#5eead4]/10 text-[#7df0dc]"
+          : "border-white/[0.09] text-[#8d95a8] hover:border-white/20 hover:text-white"
       } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden />
@@ -146,19 +146,19 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-label="Share dashboard"
       data-testid="share-dialog"
     >
-      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl">
+      <div className="glass-card w-full max-w-md bg-[#080a0e] p-5 shadow-2xl">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-200">Share dashboard</h2>
+          <h2 className="text-[15px] font-semibold tracking-tight text-white">Share dashboard</h2>
           <button
             type="button"
             aria-label="Close share dialog"
             onClick={onClose}
-            className="rounded p-1 text-zinc-500 transition hover:text-zinc-200"
+            className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -196,8 +196,8 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                   onClick={() => setRight(option.key)}
                   className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${
                     right === option.key
-                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
-                      : "border-zinc-800 text-zinc-400 hover:border-zinc-600"
+                      ? "border-[#5eead4]/50 bg-[#5eead4]/10 text-[#7df0dc]"
+                      : "border-white/[0.09] text-[#8d95a8] hover:border-white/20 hover:text-white"
                   }`}
                 >
                   <option.icon className="h-3.5 w-3.5" aria-hidden />
@@ -208,20 +208,20 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
 
             {audience === "email" ? (
               <div className="mt-3">
-                <label htmlFor="share-emails" className="mb-1 block text-xs text-zinc-400">
-                  Email addresses <span className="text-zinc-600">(comma or space separated)</span>
+                <label htmlFor="share-emails" className="field-label">
+                  Email addresses <span className="normal-case tracking-normal text-[#5f6779]">(comma or space separated)</span>
                 </label>
                 <input
                   id="share-emails"
                   value={emails}
                   onChange={(e) => setEmails(e.target.value)}
                   placeholder="teammate@company.com, auditor@corp.org"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  className="field"
                 />
                 {/* People picker — search registered users by email or name. */}
                 <div className="relative mt-2">
                   <Search
-                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600"
+                    className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#5f6779]"
                     aria-hidden
                   />
                   <input
@@ -244,11 +244,11 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                     }}
                     placeholder="Search people by email or name…"
                     title="Find registered users to add to the allow-list — type at least 2 characters"
-                    className="w-full rounded-lg border border-zinc-800 bg-zinc-900 pl-8 pr-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                    className="field pl-8"
                   />
                   {people.length > 0 ? (
                     <ul
-                      className="absolute z-10 mt-1 max-h-44 w-full overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl"
+                      className="absolute z-10 mt-1 max-h-44 w-full overflow-y-auto rounded-lg border border-white/[0.1] bg-[#080a0e] shadow-2xl"
                       role="listbox"
                       aria-label="Matching users"
                     >
@@ -259,7 +259,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                             role="option"
                             aria-selected={false}
                             title={`Add ${person.email} to the allow-list`}
-                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 transition hover:bg-emerald-500/10 hover:text-emerald-200"
+                            className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-[#c3cad8] transition hover:bg-[#5eead4]/10 hover:text-[#7df0dc]"
                             onClick={() => {
                               setEmails((current) => {
                                 const existing = current
@@ -277,7 +277,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                           >
                             <span className="min-w-0 truncate">{person.email}</span>
                             {person.displayName !== null ? (
-                              <span className="shrink-0 text-[10px] text-zinc-500">{person.displayName}</span>
+                              <span className="shrink-0 text-[10px] text-[#5f6779]">{person.displayName}</span>
                             ) : null}
                           </button>
                         </li>
@@ -285,18 +285,18 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                     </ul>
                   ) : null}
                 </div>
-                <p className="mt-1 text-[11px] text-zinc-600">
+                <p className="mt-1 text-[11px] leading-relaxed text-[#5f6779]">
                   Recipients must sign in with an allowed address. We'll email an
                   invite if email is configured, otherwise copy the link.
                 </p>
               </div>
             ) : null}
 
-            <p className="mt-3 text-[11px] text-zinc-600">{HINTS[access]}</p>
+            <p className="mt-3 text-[11px] leading-relaxed text-[#5f6779]">{HINTS[access]}</p>
 
             {error !== null ? (
               <p
-                className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+                className="mt-2 rounded-lg border border-[#fb7185]/40 bg-[#fb7185]/10 px-3 py-2 text-xs text-[#fda4af]"
                 role="alert"
               >
                 {error}
@@ -307,7 +307,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
               <button
                 type="button"
                 title="Generate the link with the audience and access level selected above"
-                className="flex-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
+                className="btn btn-primary flex-1 px-3 py-2 text-sm"
                 disabled={busy || (audience === "email" && emails.trim().length === 0)}
                 onClick={() => {
                   void handleCreate();
@@ -317,7 +317,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
               </button>
               <button
                 type="button"
-                className="rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-400 transition hover:border-zinc-600"
+                className="btn btn-ghost flex-1 px-3 py-2 text-sm"
                 onClick={onClose}
               >
                 Cancel
@@ -326,9 +326,9 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
           </>
         ) : (
           <>
-            <p className="mt-4 text-xs text-zinc-400">
+            <p className="mt-4 text-xs leading-relaxed text-[#8d95a8]">
               Share link ready —{" "}
-              <span className="text-emerald-300">
+              <span className="font-medium text-[#7df0dc]">
                 {created.access === undefined || created.access.startsWith("anyone")
                   ? "anyone with the link"
                   : created.access.startsWith("email")
@@ -338,23 +338,23 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
               ({created.access?.endsWith("edit") === true ? "edit" : "view only"}).
             </p>
             {created.access !== undefined && created.access.startsWith("org") ? (
-              <p className="mt-2 text-[11px] text-amber-300/90">
+              <p className="mt-2 text-[11px] leading-relaxed text-[#fcd34d]/90">
                 Org shares don't need a copied link — members open the dashboard
                 and are recognized by their signed-in account.
               </p>
             ) : (
-              <div className="mt-2 break-all rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 font-mono text-xs text-zinc-200">
+              <div className="mt-2 break-all rounded-lg border border-white/[0.09] bg-black/40 px-3 py-2 font-mono text-xs text-[#c3cad8]">
                 {fullUrl}
               </div>
             )}
             {created.invited !== undefined && created.invited.length > 0 ? (
-              <p className="mt-2 text-xs text-emerald-300" role="status">
+              <p className="mt-2 text-xs text-[#7df0dc]" role="status">
                 Invitations emailed to {created.invited.length} address
                 {created.invited.length === 1 ? "" : "es"}.
               </p>
             ) : null}
             {created.skipped !== undefined && created.skipped.length > 0 ? (
-              <p className="mt-2 text-xs text-amber-300" role="status">
+              <p className="mt-2 text-xs text-[#fcd34d]" role="status">
                 Email isn't configured — copy the link and send it to{" "}
                 {created.skipped.length} address
                 {created.skipped.length === 1 ? "" : "es"} yourself.
@@ -366,7 +366,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
                   type="button"
                   data-testid="copy-share-link"
                   title="Copy the share URL to your clipboard"
-                  className="flex-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400"
+                  className="btn btn-primary flex-1 px-3 py-2 text-sm"
                   onClick={() => {
                     void handleCopyLink();
                   }}
@@ -379,7 +379,7 @@ export function ShareDialog({ tenantId, onClose }: Props): JSX.Element {
               )}
               <button
                 type="button"
-                className="flex-1 rounded-lg border border-zinc-800 px-3 py-2 text-sm text-zinc-400 transition hover:border-zinc-600"
+                className="btn btn-ghost flex-1 px-3 py-2 text-sm"
                 onClick={onClose}
               >
                 Done

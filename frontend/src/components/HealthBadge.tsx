@@ -2,21 +2,30 @@ import { Activity } from "lucide-react";
 import { motion } from "framer-motion";
 import type { StreamStatus } from "../hooks/useSSE";
 
-const STYLES: Record<StreamStatus, { label: string; className: string; dot: string }> = {
+const STYLES: Record<
+  StreamStatus,
+  { label: string; text: string; border: string; dot: string; ring: string }
+> = {
   live: {
     label: "Live",
-    className: "border-emerald-500/40 text-emerald-300 shadow-glow-emerald",
-    dot: "bg-emerald-400",
+    text: "text-[#7df0dc]",
+    border: "border-[#5eead4]/[0.35]",
+    dot: "bg-[#5eead4]",
+    ring: "shadow-[0_0_16px_-4px_rgba(94,234,212,0.6)]",
   },
   connecting: {
     label: "Connecting",
-    className: "border-amber-500/40 text-amber-300 shadow-glow-amber",
-    dot: "bg-amber-400 animate-pulse",
+    text: "text-[#fcd34d]",
+    border: "border-[#fbbf24]/[0.35]",
+    dot: "bg-[#fbbf24] animate-pulse-dot",
+    ring: "",
   },
   disconnected: {
     label: "Disconnected",
-    className: "border-rose-500/40 text-rose-300 shadow-glow-rose",
-    dot: "bg-rose-400",
+    text: "text-[#fda4af]",
+    border: "border-[#fb7185]/[0.35]",
+    dot: "bg-[#fb7185]",
+    ring: "",
   },
 };
 
@@ -26,7 +35,7 @@ export function HealthBadge({ status }: { status: StreamStatus }): JSX.Element {
     <motion.div
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`inline-flex items-center gap-2 rounded-full border bg-zinc-900/60 px-3 py-1 text-xs font-medium backdrop-blur-md ${style.className}`}
+      className={`inline-flex items-center gap-2 rounded-full border bg-black/40 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] backdrop-blur-md ${style.border} ${style.text} ${style.ring}`}
       data-testid="health-badge"
     >
       <Activity className="h-3.5 w-3.5" aria-hidden />

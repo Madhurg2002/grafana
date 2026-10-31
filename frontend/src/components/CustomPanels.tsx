@@ -260,7 +260,7 @@ function LiveWidget({
           data-testid="stat-csv"
           title="Download this value as CSV"
           aria-label={`Download ${widget.title} as CSV`}
-          className="absolute right-2 top-2 rounded p-1 text-zinc-600 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+          className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
           onClick={() => {
             downloadCsv(csvFilename(widget.title), [{
               timestamp: new Date().toISOString(),
@@ -287,17 +287,38 @@ function HostsTable({
   onSelectHost: (host: string | null) => void;
 }): JSX.Element {
   const hostsUp = useInstantMetric(tenantId, "up");
+  const [hostFilter, setHostFilter] = useState("");
+  const [downOnly, setDownOnly] = useState(false);
+  const needle = hostFilter.trim().toLowerCase();
+  // One pass over the `up` vector: parse → filter → cap, so the table stays
+  // responsive on a 500-target fleet and the empty state can explain itself.
+  const visibleHosts = (hostsUp.data?.result ?? [])
+    .map((entry) => {
+      const item = entry as { metric?: Record<string, string>; value?: { value: number } };
+      return {
+        instance: item.metric?.instance ?? "unknown",
+        job: item.metric?.job ?? "unknown",
+        up: item.value?.value ?? 0,
+      };
+    })
+    .filter((host) => (downOnly ? host.up !== 1 : true))
+    .filter(
+      (host) =>
+        needle.length === 0 || `${host.instance} ${host.job}`.toLowerCase().includes(needle)
+    )
+    .slice(0, 200);
+  const totalHosts = hostsUp.data?.result.length ?? 0;
   return (
     <section className="glass-card p-4" data-testid="hosts-widget">
-      <h2 className="mb-2 text-sm font-semibold text-zinc-300">
+      <h2 className="mb-2 flex flex-wrap items-center gap-2 text-[15px] font-semibold tracking-tight text-white">
         Scrape targets
         <span
-          className="ml-2 rounded bg-zinc-800/80 px-1.5 py-0.5 font-mono text-[10px] font-normal text-zinc-400"
+          className="chip px-1.5 py-0.5 font-mono text-[10px] font-normal"
           title="This table is powered by the `up` metric — Prometheus's own health check for every scrape target. 1 = up, 0 = down."
         >
           metric: up
         </span>
-        <span className="ml-2 text-xs font-normal text-zinc-500">
+        <span className="text-[11px] font-normal text-[#8d95a8]">
           {selectedHost === null
             ? "click a host to scope gauges/sparklines to it"
             : `scoped to ${selectedHost}`}
@@ -306,7 +327,7 @@ function HostsTable({
           <button
             type="button"
             title="Clear the host filter — show all hosts again"
-            className="ml-2 rounded border border-zinc-700 px-1.5 text-[10px] text-zinc-400 hover:text-zinc-200"
+            className="rounded border border-white/[0.14] px-1.5 text-[10px] text-[#8d95a8] transition hover:text-white"
             onClick={() => onSelectHost(null)}
           >
             clear
@@ -314,14 +335,39 @@ function HostsTable({
         ) : null}
       </h2>
       <p
-        className="mb-2 truncate font-mono text-[10px] text-zinc-600"
+        className="mb-2 truncate font-mono text-[10px] text-[#5f6779]"
         title="Query powering this table: up"
       >
-        <span className="text-zinc-500">query:</span> up
+        <span className="text-[#8d95a8]">query:</span> up
       </p>
-      <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800/80">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <input
+          value={hostFilter}
+          onChange={(e) => setHostFilter(e.target.value)}
+          placeholder="Filter hosts (instance or job)…"
+          aria-label="Filter hosts"
+          title="Filter the target list — matches the instance or job label"
+          className="field max-w-64 py-1 text-xs"
+        />
+        <label
+          className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[#8d95a8]"
+          title="Show only targets whose last scrape failed"
+        >
+          <input
+            type="checkbox"
+            checked={downOnly}
+            onChange={(e) => setDownOnly(e.target.checked)}
+            className="h-3 w-3 accent-[#5eead4]"
+          />
+          down only
+        </label>
+        <span className="text-[10px] text-[#5f6779]" data-testid="hosts-count">
+          {visibleHosts.length} of {totalHosts}
+        </span>
+      </div>
+      <div className="max-h-64 overflow-auto rounded-lg border border-white/[0.075] bg-black/20">
         <table className="w-full text-left text-xs">
-          <thead className="sticky top-0 bg-zinc-900/95 text-zinc-400">
+          <thead className="sticky top-0 bg-[#0b0e14]/95 text-[#8d95a8] backdrop-blur">
             <tr>
               <th className="px-4 py-2 font-medium">Instance</th>
               <th className="px-4 py-2 font-medium">Job</th>
@@ -329,19 +375,15 @@ function HostsTable({
             </tr>
           </thead>
           <tbody>
-            {(hostsUp.data?.result ?? []).slice(0, 200).map((entry, i) => {
-              const item = entry as {
-                metric?: Record<string, string>;
-                value?: { value: number };
-              };
-              const up = item.value?.value ?? 0;
-              const instance = item.metric?.instance ?? "unknown";
+            {visibleHosts.map((host, i) => {
+              const up = host.up;
+              const instance = host.instance;
               const isSel = selectedHost === instance;
               return (
                 <tr
-                  key={`${item.metric?.job ?? "?"}/${instance}/${i}`}
-                  className={`border-t border-zinc-800/60 cursor-pointer transition ${
-                    isSel ? "bg-emerald-500/10" : "hover:bg-zinc-900/60"
+                  key={`${host.job}/${instance}/${i}`}
+                  className={`cursor-pointer border-t border-white/[0.06] transition ${
+                    isSel ? "bg-[#5eead4]/10" : "hover:bg-white/[0.04]"
                   }`}
                   title={
                     isSel
@@ -350,20 +392,29 @@ function HostsTable({
                   }
                   onClick={() => onSelectHost(isSel ? null : instance)}
                 >
-                  <td className="max-w-64 truncate px-4 py-2 font-mono text-zinc-200">
-                    <span title={instance} className={`block truncate ${isSel ? "text-emerald-300" : ""}`}>
+                  <td className="max-w-64 truncate px-4 py-2 font-mono text-[#c3cad8]">
+                    <span title={instance} className={`block truncate ${isSel ? "text-[#7df0dc]" : ""}`}>
                       {instance}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-zinc-400">{item.metric?.job ?? "unknown"}</td>
+                  <td className="px-4 py-2 text-[#8d95a8]">{host.job}</td>
                   <td className="px-4 py-2">
-                    <span className={up === 1 ? "text-emerald-300" : "text-rose-300"}>
+                    <span className={up === 1 ? "font-medium text-[#34d399]" : "font-medium text-[#fb7185]"}>
                       {up === 1 ? "up" : "down"}
                     </span>
                   </td>
                 </tr>
               );
             })}
+            {visibleHosts.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="px-4 py-4 text-center text-[11px] text-[#5f6779]">
+                  {totalHosts === 0
+                    ? "No scrape targets reported yet."
+                    : "No targets match this filter."}
+                </td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>
@@ -814,7 +865,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
       {/* Page tabs — each page is an independently editable dashboard. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <LayoutDashboard className="mr-1 h-4 w-4 text-emerald-300" aria-hidden />
+          <LayoutDashboard className="mr-1 h-4 w-4 text-[#5eead4]" aria-hidden />
           {pages.map((page) => (
             <span key={page.id} className="group/page relative inline-flex items-center">
               <button
@@ -828,12 +879,12 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 onClick={() => setActivePageId(page.id)}
                 className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
                   page.id === activePage?.id
-                    ? "bg-emerald-500/15 text-emerald-300"
-                    : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                    ? "bg-[#5eead4]/[0.12] text-[#7df0dc]"
+                    : "text-[#8d95a8] hover:bg-white/[0.05] hover:text-white"
                 }`}
               >
                 {page.is_home === true ? (
-                  <Star className="h-3 w-3 fill-emerald-300 text-emerald-300" aria-hidden />
+                  <Star className="h-3 w-3 fill-[#5eead4] text-[#5eead4]" aria-hidden />
                 ) : null}
                 {page.name}
               </button>
@@ -844,7 +895,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                       type="button"
                       aria-label={`Make ${page.name} the home page`}
                       title="Make this the home page (what opens first)"
-                      className="rounded-full bg-zinc-800 p-0.5 text-zinc-400 hover:bg-amber-500/20 hover:text-amber-300"
+                      className="rounded-full bg-[#151922] p-0.5 text-[#8d95a8] transition hover:bg-[#fbbf24]/20 hover:text-[#fbbf24]"
                       onClick={() => {
                         void handleMakeHome(page);
                       }}
@@ -857,7 +908,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                       type="button"
                       aria-label={`Delete page ${page.name}`}
                       title="Delete this page (its widgets go with it)"
-                      className="ml-0.5 rounded-full bg-zinc-800 p-0.5 text-zinc-400 hover:bg-rose-500/20 hover:text-rose-300"
+                      className="ml-0.5 rounded-full bg-[#151922] p-0.5 text-[#8d95a8] transition hover:bg-[#fb7185]/20 hover:text-[#fb7185]"
                       onClick={() => {
                         void handleDeletePage(page);
                       }}
@@ -882,24 +933,24 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 placeholder="Page name"
                 title="Page name — letters, digits, spaces, - and _"
                 maxLength={64}
-                className="w-28 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                className="field w-28 py-1 text-xs"
               />
               <label
-                className="flex cursor-pointer items-center gap-1 text-[10px] text-zinc-500"
+                className="flex cursor-pointer items-center gap-1 text-[10px] text-[#8d95a8]"
                 title="Show the fixed built-in essentials (Hosts Up, CPU, RAM, Network) above this page's own widgets"
               >
                 <input
                   type="checkbox"
                   checked={newPageWithBuiltins}
                   onChange={(e) => setNewPageWithBuiltins(e.target.checked)}
-                  className="h-3 w-3 accent-emerald-500"
+                  className="h-3 w-3 accent-[#5eead4]"
                 />
                 built-ins
               </label>
               <button
                 type="button"
                 aria-label="Create page"
-                className="rounded-lg bg-emerald-500/90 px-2 py-1 text-xs font-semibold text-zinc-950 disabled:opacity-50"
+                className="btn btn-primary px-2 py-1"
                 disabled={busy || newPageName.trim().length === 0}
                 onClick={() => {
                   void handleAddPage();
@@ -910,7 +961,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               <button
                 type="button"
                 aria-label="Cancel page creation"
-                className="text-zinc-500 hover:text-zinc-300"
+                className="text-[#5f6779] transition hover:text-white"
                 onClick={() => setAddingPage(false)}
               >
                 ×
@@ -921,7 +972,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               type="button"
               data-testid="add-page-button"
               title="New page — a whole separate dashboard you can compose freely"
-              className="flex items-center gap-1 rounded-lg border border-zinc-800 px-2 py-1 text-xs text-zinc-500 transition hover:border-emerald-500/40 hover:text-emerald-300"
+              className="btn btn-ghost gap-1 px-2 py-1"
               onClick={() => setAddingPage(true)}
             >
               <Plus className="h-3 w-3" aria-hidden />
@@ -944,12 +995,12 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                     if (e.key === "Escape") setRenamingPage(false);
                   }}
                   maxLength={64}
-                  className="w-28 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
+                  className="field w-28 py-1 text-xs"
                 />
                 <button
                   type="button"
                   aria-label="Save page name"
-                  className="text-emerald-300 hover:text-emerald-200"
+                  className="text-[#7df0dc] transition hover:text-[#5eead4]"
                   onClick={() => {
                     void handleRenamePage();
                   }}
@@ -959,7 +1010,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 <button
                   type="button"
                   aria-label="Cancel rename"
-                  className="text-zinc-500 hover:text-zinc-300"
+                  className="text-[#5f6779] transition hover:text-white"
                   onClick={() => setRenamingPage(false)}
                 >
                   ×
@@ -970,7 +1021,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 type="button"
                 title="Rename this page"
                 aria-label="Rename page"
-                className="rounded-lg border border-zinc-800 p-1.5 text-zinc-500 transition hover:border-zinc-600 hover:text-zinc-200"
+                className="btn btn-ghost p-1.5"
                 onClick={() => {
                   setPageNameDraft(activePage.name);
                   setRenamingPage(true);
@@ -979,12 +1030,12 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 <Pencil className="h-3 w-3" aria-hidden />
               </button>
             )}
-            <div className="flex items-center gap-1 text-[11px] text-zinc-500">
+            <div className="flex items-center gap-1 text-[11px] text-[#8d95a8]">
               <button
                 type="button"
                 aria-label="Refresh now"
                 title="Refresh every widget now"
-                className="rounded p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
+                className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
                 onClick={() => window.dispatchEvent(new CustomEvent("passthrough:refresh"))}
               >
                 <RefreshCw className="h-3 w-3" aria-hidden />
@@ -994,7 +1045,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 data-testid="export-page"
                 aria-label="Export page as JSON"
                 title="Download this page (layout + widgets) as a JSON file you can import elsewhere"
-                className="rounded p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
+                className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
                 onClick={() => {
                   if (activePage === null) return;
                   void exportPageJson(activePage, widgets);
@@ -1004,7 +1055,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               </button>
               <label
                 title="Import a dashboard JSON file as a new page"
-                className="cursor-pointer rounded p-1 text-zinc-500 transition hover:bg-zinc-900 hover:text-zinc-200"
+                className="cursor-pointer rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
               >
                 <FileUp className="h-3 w-3" aria-hidden />
                 <input
@@ -1028,7 +1079,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 onChange={(e) => {
                   void handlePageSetting({ refreshSeconds: Number(e.target.value) });
                 }}
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-emerald-500/50"
+                className="rounded-lg border border-white/[0.09] bg-black/40 px-1.5 py-1 text-[11px] text-[#c3cad8] outline-none transition focus:border-[#5eead4]/50"
               >
                 {REFRESH_OPTIONS.map((option) => (
                   <option key={option.seconds} value={option.seconds}>
@@ -1037,7 +1088,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 ))}
               </select>
             </div>
-            <label className="flex items-center gap-1 text-[11px] text-zinc-500">
+            <label className="flex items-center gap-1 text-[11px] text-[#8d95a8]">
               <Maximize2 className="h-3 w-3" aria-hidden />
               <select
                 aria-label="Time window"
@@ -1046,7 +1097,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 onChange={(e) => {
                   void handlePageSetting({ windowMinutes: Number(e.target.value) });
                 }}
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-1.5 py-1 text-[11px] text-zinc-300 outline-none focus:border-emerald-500/50"
+                className="rounded-lg border border-white/[0.09] bg-black/40 px-1.5 py-1 text-[11px] text-[#c3cad8] outline-none transition focus:border-[#5eead4]/50"
               >
                 {WINDOW_OPTIONS.map((option) => (
                   <option key={option.minutes} value={option.minutes}>
@@ -1060,7 +1111,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 type="button"
                 data-testid="add-panel-button"
                 title="Add a stat, gauge, sparkline, or the scrape-target table to this page"
-                className="flex items-center gap-1.5 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-emerald-500/40 hover:text-emerald-300"
+                className="btn btn-ghost"
                 onClick={() => {
                   resetForm();
                   setAdding(true);
@@ -1075,7 +1126,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
       </div>
 
       {widgets.length === 0 && !adding && activePage !== null ? (
-        <p className="mt-3 text-xs text-zinc-600">
+        <p className="mt-3 text-xs leading-relaxed text-[#5f6779]">
           This page is empty — add widgets (stats, gauges, sparklines, or the
           scrape-target table), stretch them across the grid, and reorder them.
           Everything you build here is what a share link shows.
@@ -1083,7 +1134,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
       ) : null}
       {error !== null ? (
         <p
-          className="mt-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+          className="mt-2 rounded-lg border border-[#fb7185]/40 bg-[#fb7185]/10 px-3 py-2 text-xs text-[#fda4af]"
           role="alert"
         >
           {error}
@@ -1092,7 +1143,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
 
       {adding && activePage !== null ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-label={editingWidget !== null ? "Edit widget" : "Add widget"}
@@ -1110,7 +1161,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
             setError(null);
           }}
         >
-        <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="glass-card flex max-h-[88vh] w-full max-w-3xl flex-col overflow-y-auto bg-[#080a0e] p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
           <div className="grid grid-cols-1 gap-x-2 gap-y-2 sm:grid-cols-4">
             <div className="flex flex-col gap-0.5">
               <input
@@ -1118,9 +1169,9 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Widget title"
                 title="Shown as the card heading — e.g. “Disk IO”"
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                className="field text-xs"
               />
-              <p className="text-[10px] text-zinc-600">Any short name; shown as the card heading.</p>
+              <p className="text-[10px] leading-relaxed text-[#5f6779]">Any short name; shown as the card heading.</p>
             </div>
             <div className="flex flex-col gap-0.5">
               <select
@@ -1133,7 +1184,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                     setKind(nextKind);
                   }
                 }}
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
+                className="field text-xs"
                 aria-label="Widget type"
                 title="How the data is drawn: over time, as a dial, a single number, or the target table"
               >
@@ -1142,13 +1193,13 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 <option value="stat">Stat (single value)</option>
                 <option value="hosts_table">Scrape-target table</option>
               </select>
-              <p className="text-[10px] text-zinc-600">Line over time · dial · number · table.</p>
+              <p className="text-[10px] leading-relaxed text-[#5f6779]">Line over time · dial · number · table.</p>
             </div>
             <div className="flex flex-col gap-0.5">
               <select
                 value={span}
                 onChange={(e) => setSpan(Number(e.target.value))}
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
+                className="field text-xs"
                 aria-label="Grid width"
                 title="How many grid columns this widget stretches across"
               >
@@ -1158,7 +1209,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                   </option>
                 ))}
               </select>
-              <p className="text-[10px] text-zinc-600">Width — or drag the card's right edge.</p>
+              <p className="text-[10px] leading-relaxed text-[#5f6779]">Width — or drag the card's right edge.</p>
             </div>
             <div className="flex flex-col gap-0.5">
               <input
@@ -1170,9 +1221,9 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 onChange={(e) => setHeightPx(Math.max(60, Math.min(1200, Number(e.target.value) || 112)))}
                 aria-label="Widget height in pixels"
                 title="Pinned pixel height — stays fixed whatever the zoom level"
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 outline-none focus:border-emerald-500/50"
+                className="field text-xs"
               />
-              <p className="text-[10px] text-zinc-600">Height in px — or drag the bottom edge.</p>
+              <p className="text-[10px] leading-relaxed text-[#5f6779]">Height in px — or drag the bottom edge.</p>
             </div>
             <div className="flex flex-col gap-0.5">
               <input
@@ -1180,9 +1231,9 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 onChange={(e) => setUnit(e.target.value)}
                 placeholder="Unit (optional, e.g. bytes/s)"
                 title="Appended to numbers, e.g. %, req/s, bytes"
-                className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                className="field text-xs"
               />
-              <p className="text-[10px] text-zinc-600">Suffix on numbers — %, req/s, bytes…</p>
+              <p className="text-[10px] leading-relaxed text-[#5f6779]">Suffix on numbers — %, req/s, bytes…</p>
             </div>
           </div>
           {kind !== "hosts_table" ? (
@@ -1197,9 +1248,9 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 placeholder='PromQL — e.g. rate(node_network_receive_bytes_total{device=~"eth.*|ens.*|eno.*|bond.*"}[5m])'
                 title="PromQL query — instant for stat/gauge, range for sparkline. The backend normalizer enforces device filters, MemAvailable, and [5m]+ rate windows."
                 rows={2}
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 font-mono text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                className="field font-mono text-xs"
               />
-              <p className="mt-0.5 text-[10px] text-zinc-600">
+              <p className="mt-0.5 text-[10px] leading-relaxed text-[#5f6779]">
                 One PromQL expression. ↑↓/Enter/Esc navigate suggestions like a
                 code editor. Sparklines render a time range; stat/gauge take the
                 latest value. Unsafe queries are auto-corrected by the normalizer.
@@ -1220,7 +1271,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 <button
                   type="button"
                   title="Open the metric browser — pick a metric and its live series to build a query"
-                  className="flex items-center gap-1 text-[11px] text-zinc-500 transition hover:text-emerald-300"
+                  className="btn btn-quiet gap-1 px-0 text-[11px]"
                   onClick={() => setBrowserOpen(true)}
                 >
                   <Table2 className="h-3 w-3" aria-hidden />
@@ -1229,20 +1280,20 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               </div>
             </div>
           ) : (
-            <p className="text-[11px] text-zinc-600">
+            <p className="text-[11px] leading-relaxed text-[#5f6779]">
               The scrape-target table lists everything your Prometheus watches —
               no query needed.
             </p>
           )}
           <div className="mt-1 flex items-center justify-between">
-            <p className="text-sm font-semibold text-zinc-200">
+            <p className="text-[15px] font-semibold tracking-tight text-white">
               {editingWidget !== null ? `Edit “${editingWidget.title}”` : `Add widget to ${activePage.name}`}
             </p>
             <button
               type="button"
               aria-label="Close"
               title="Close without saving"
-              className="rounded p-1 text-zinc-500 transition hover:text-zinc-200"
+              className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
               onClick={() => {
                 setAdding(false);
                 resetForm();
@@ -1254,7 +1305,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
           </div>
           {error !== null ? (
             <p
-              className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
+              className="mt-3 rounded-lg border border-[#fb7185]/40 bg-[#fb7185]/10 px-3 py-2 text-xs text-[#fda4af]"
               role="alert"
             >
               {error}
@@ -1263,7 +1314,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              className="rounded-lg bg-emerald-500/90 px-3 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
+              className="btn btn-primary px-3 py-1.5"
               disabled={
                 busy ||
                 title.trim().length === 0 ||
@@ -1281,7 +1332,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
             </button>
             <button
               type="button"
-              className="rounded-lg border border-zinc-800 px-3 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-600"
+              className="btn btn-ghost px-3 py-1.5"
               onClick={() => {
                 setAdding(false);
                 resetForm();
@@ -1320,7 +1371,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
             onDragEnd={() => setDragIndex(null)}
           >
             <span
-              className="absolute -left-1 top-2 z-10 cursor-grab rounded p-0.5 text-zinc-700 opacity-0 transition group-hover:opacity-100 active:cursor-grabbing"
+              className="absolute -left-1 top-2 z-10 cursor-grab rounded p-0.5 text-[#3f4657] opacity-0 transition group-hover:opacity-100 active:cursor-grabbing"
               aria-hidden
             >
               <GripVertical className="h-3.5 w-3.5" />
@@ -1334,7 +1385,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               className="absolute -right-1.5 top-0 z-10 flex h-full w-3 cursor-ew-resize touch-none items-center justify-center opacity-0 transition group-hover:opacity-100"
               onPointerDown={(e) => startResize(e, widget, "x")}
             >
-              <span className="h-10 w-1 rounded-full bg-zinc-700 transition group-hover:bg-emerald-500/60" />
+              <span className="h-10 w-1 rounded-full bg-[#2a3040] transition group-hover:bg-[#5eead4]/70" />
             </span>
             <span
               role="separator"
@@ -1344,7 +1395,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               className="absolute -bottom-1.5 left-0 z-10 flex h-3 w-full cursor-ns-resize touch-none items-center justify-center opacity-0 transition group-hover:opacity-100"
               onPointerDown={(e) => startResize(e, widget, "y")}
             >
-              <span className="h-1 w-10 rounded-full bg-zinc-700 transition group-hover:bg-emerald-500/60" />
+              <span className="h-1 w-10 rounded-full bg-[#2a3040] transition group-hover:bg-[#5eead4]/70" />
             </span>
             <span
               role="separator"
@@ -1354,7 +1405,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
               className="absolute -bottom-1.5 -right-1.5 z-10 h-4 w-4 cursor-nwse-resize touch-none rounded-sm opacity-0 transition group-hover:opacity-100"
               onPointerDown={(e) => startResize(e, widget, "both")}
             >
-              <span className="absolute bottom-0.5 right-0.5 h-2 w-2 border-b-2 border-r-2 border-zinc-600 transition group-hover:border-emerald-500/70" />
+              <span className="absolute bottom-0.5 right-0.5 h-2 w-2 border-b-2 border-r-2 border-[#3f4657] transition group-hover:border-[#5eead4]/70" />
             </span>
             <LiveWidget
               widget={{ ...widget, onSelectHost: setSelectedHost } as WidgetWithHost}
@@ -1367,7 +1418,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 type="button"
                 aria-label={`Widen ${widget.title}`}
                 title={widget.span >= 12 ? "Already maximum width" : "Stretch wider"}
-                className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30"
+                className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.08] hover:text-white disabled:opacity-30"
                 disabled={widget.span >= 12}
                 onClick={() => {
                   void updateWidget(tenantId, widget.id, { span: Math.min(widget.span + 1, 12) }).then(
@@ -1381,7 +1432,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 type="button"
                 aria-label={`Shrink ${widget.title}`}
                 title={widget.span <= 1 ? "Already narrow" : "Make narrower"}
-                className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30"
+                className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.08] hover:text-white disabled:opacity-30"
                 disabled={widget.span <= 1}
                 onClick={() => {
                   void updateWidget(tenantId, widget.id, { span: Math.max(widget.span - 1, 1) }).then(
@@ -1395,7 +1446,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 type="button"
                 aria-label={`Clone ${widget.title}`}
                 title="Duplicate this widget — the copy is added at the end of the page"
-                className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30"
+                className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.08] hover:text-white disabled:opacity-30"
                 disabled={busy}
                 onClick={() => {
                   void handleClone(widget);
@@ -1407,7 +1458,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 type="button"
                 aria-label={`Edit ${widget.title}`}
                 title="Edit this widget"
-                className="rounded p-1 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-200"
+                className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.08] hover:text-white"
                 onClick={() => startEdit(widget)}
               >
                 <Pencil className="h-3 w-3" aria-hidden />
@@ -1416,7 +1467,7 @@ export function CustomPanels({ tenantId, wide = false, onActivePageChange }: Pro
                 type="button"
                 aria-label={`Delete widget ${widget.title}`}
                 title="Remove this widget"
-                className="rounded p-1 text-zinc-600 hover:bg-rose-500/10 hover:text-rose-400"
+                className="rounded-md p-1 text-[#5f6779] transition hover:bg-[#fb7185]/10 hover:text-[#fb7185]"
                 disabled={busy}
                 onClick={() => {
                   void handleDelete(widget.id);

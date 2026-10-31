@@ -79,13 +79,15 @@ export function DashboardView({
       {/* In embedded mode the app header above is THE header — this renders a
           slim toolbar only. Internal tenant IDs are never displayed. */}
       {embedded ? null : (
-      <header className="sticky top-0 z-10 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2 sm:px-6">
+      <header className="chrome-bar sticky top-0 z-10">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2.5 sm:px-6">
           <div className="flex items-center gap-2">
-            <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-[#5eead4]/30 bg-[#5eead4]/10 text-[#5eead4]">
+              <Radio className="h-3.5 w-3.5" aria-hidden />
+            </span>
             <span className="text-sm font-semibold tracking-tight">Passthrough</span>
             <span
-              className="hidden max-w-72 truncate text-xs text-zinc-500 sm:inline"
+              className="hidden max-w-72 truncate text-xs text-[#8d95a8] sm:inline"
               title={`connection: ${activeLabel}`}
             >
               {activeLabel}
@@ -107,7 +109,7 @@ export function DashboardView({
       {/* In embedded mode the switcher/health/share controls live in a slim
           toolbar row directly under the single app header. */}
       {embedded && token !== null ? (
-        <div className="mx-auto flex w-full max-w-none items-center justify-between gap-2 px-4 pt-3 sm:px-8">
+        <div className="mx-auto flex w-full max-w-none items-center justify-between gap-2 px-4 pb-1 pt-4 sm:px-8">
           <ConnectionSwitcher tenantId={tenantId} onActiveChanged={setActiveLabel} />
           <div className="flex items-center gap-2">
             <button
@@ -115,7 +117,7 @@ export function DashboardView({
               title="Refresh every widget now"
               aria-label="Refresh now"
               onClick={triggerRefresh}
-              className="rounded-lg border border-zinc-800 p-1.5 text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+              className="btn btn-ghost px-2 py-1.5"
             >
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             </button>
@@ -129,10 +131,10 @@ export function DashboardView({
                     ? "Show built-in essentials"
                     : "Hide built-in essentials"
                 }
-                className={`rounded-lg border px-2 py-1.5 text-[11px] transition ${
+                className={`btn px-2.5 py-1.5 text-[11px] ${
                   activePage.show_builtins === false
-                    ? "border-zinc-800 text-zinc-500 hover:border-emerald-500/40 hover:text-emerald-300"
-                    : "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                    ? "border border-white/[0.09] text-[#5f6779] hover:text-white"
+                    : "border border-[#5eead4]/30 bg-[#5eead4]/10 text-[#7df0dc] hover:bg-[#5eead4]/20"
                 }`}
                 onClick={() => {
                   const previous = activePage.show_builtins !== false;
@@ -157,7 +159,7 @@ export function DashboardView({
               data-testid="share-button"
               title="Create a share link — anyone with the link, specific emails, or your whole org"
               onClick={() => setShareDialogOpen(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
+              className="btn btn-primary"
             >
               <Share2 className="h-3.5 w-3.5" aria-hidden />
               Share
@@ -165,13 +167,13 @@ export function DashboardView({
           </div>
         </div>
       ) : !embedded && token !== null ? (
-        <div className="mx-auto mt-4 flex w-full max-w-none items-center justify-end gap-2 px-4 sm:px-8">
+        <div className="mx-auto mt-5 flex w-full max-w-none items-center justify-end gap-2 px-4 sm:px-8">
           <button
             type="button"
             title="Refresh every widget now"
             aria-label="Refresh now"
             onClick={triggerRefresh}
-            className="rounded-lg border border-zinc-800 p-1.5 text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+            className="btn btn-ghost px-2 py-1.5"
           >
             <RefreshCw className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -179,7 +181,7 @@ export function DashboardView({
             type="button"
             data-testid="share-button"
             onClick={() => setShareDialogOpen(true)}
-            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 transition hover:bg-emerald-500/20 disabled:opacity-50"
+            className="btn btn-primary"
           >
             <Share2 className="h-3.5 w-3.5" aria-hidden />
             Share
@@ -191,7 +193,7 @@ export function DashboardView({
       ) : null}
 
       {/* Built-in node-exporter essentials (base layer) — per-page optional. */}
-      <main className="mx-auto w-full max-w-none px-4 py-5 sm:px-8">
+      <main className="mx-auto w-full max-w-none px-4 py-6 sm:px-8">
         {showBuiltins ? (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 3xl:grid-cols-6">
           <StatusCard
@@ -243,7 +245,7 @@ export function DashboardView({
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="mt-6 text-center text-[11px] text-zinc-600"
+          className="mt-8 flex flex-wrap items-center justify-center gap-x-1 text-center text-[11px] text-[#5f6779]"
         >
           <Cpu className="mr-1 inline h-3 w-3" aria-hidden />
           <MemoryStick className="mr-1 inline h-3 w-3" aria-hidden />

@@ -94,17 +94,17 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-label="Metric browser"
       data-testid="metric-browser"
     >
-      <div className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-            <Table2 className="h-4 w-4 text-emerald-300" aria-hidden />
+      <div className="glass-card flex max-h-[85vh] w-full max-w-3xl flex-col bg-[#080a0e] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/[0.075] px-4 py-3">
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-white">
+            <Table2 className="h-4 w-4 text-[#5eead4]" aria-hidden />
             Metric browser
-            <span className="text-xs font-normal text-zinc-500">
+            <span className="text-[11px] font-normal text-[#8d95a8]">
               {selected === null ? `${metrics.length} tables` : selected}
             </span>
           </h2>
@@ -112,7 +112,7 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
             type="button"
             aria-label="Close browser"
             onClick={onClose}
-            className="rounded p-1 text-zinc-500 transition hover:text-zinc-200"
+            className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
@@ -120,15 +120,15 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
 
         <div className="grid flex-1 grid-cols-1 overflow-hidden sm:grid-cols-[220px_1fr]">
           {/* Metric "tables" list */}
-          <div className="flex flex-col overflow-hidden border-b border-zinc-800 sm:border-b-0 sm:border-r">
+          <div className="flex flex-col overflow-hidden border-b border-white/[0.075] sm:border-b-0 sm:border-r">
             <div className="p-2">
-              <div className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5">
-                <Search className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
+              <div className="flex items-center gap-1.5 rounded-lg border border-white/[0.09] bg-black/40 px-2 py-1.5">
+                <Search className="h-3.5 w-3.5 shrink-0 text-[#5f6779]" aria-hidden />
                 <input
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                   placeholder="Filter metrics…"
-                  className="w-full bg-transparent text-xs text-zinc-100 placeholder-zinc-600 outline-none"
+                  className="w-full bg-transparent text-xs text-[#e6e9f0] placeholder-[#5f6779] outline-none"
                 />
               </div>
             </div>
@@ -144,8 +144,8 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                     title={metric}
                     className={`w-full truncate rounded-md px-2 py-1 text-left font-mono text-[11px] transition ${
                       selected === metric
-                        ? "bg-emerald-500/15 text-emerald-300"
-                        : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                        ? "bg-[#5eead4]/[0.12] text-[#7df0dc]"
+                        : "text-[#8d95a8] hover:bg-white/[0.05] hover:text-white"
                     }`}
                   >
                     {metric}
@@ -153,7 +153,7 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                 </li>
               ))}
               {filteredMetrics.length === 0 ? (
-                <li className="px-2 py-4 text-xs text-zinc-600">No matching metrics.</li>
+                <li className="px-2 py-4 text-xs text-[#5f6779]">No matching metrics.</li>
               ) : null}
             </ul>
           </div>
@@ -161,7 +161,7 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
           {/* Series "rows × columns" table */}
           <div className="flex flex-col overflow-hidden">
             {selected === null ? (
-              <p className="p-6 text-center text-xs text-zinc-600">
+              <p className="p-6 text-center text-xs leading-relaxed text-[#5f6779]">
                 Select a metric on the left to browse its live series — each row
                 is one labeled stream, each column a label.
               </p>
@@ -172,11 +172,11 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                     value={rowFilter}
                     onChange={(e) => setRowFilter(e.target.value)}
                     placeholder="Filter rows by label value…"
-                    className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                    className="field min-w-0 flex-1 text-xs"
                   />
                   <button
                     type="button"
-                    className="rounded-lg bg-emerald-500/90 px-2.5 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400"
+                    className="btn btn-primary"
                     onClick={() => onInsert(selected)}
                   >
                     Insert metric
@@ -184,10 +184,10 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                 </div>
                 <div className="flex-1 overflow-auto px-2 pb-2">
                   {loadingSeries ? (
-                    <p className="p-4 text-xs text-zinc-500">Loading series…</p>
+                    <p className="p-4 text-xs text-[#8d95a8]">Loading series…</p>
                   ) : (
                     <table className="w-full text-left text-[11px]">
-                      <thead className="text-zinc-500">
+                      <thead className="text-[#8d95a8]">
                         <tr>
                           {columns.map((col) => (
                             <th key={col} className="px-2 py-1 font-medium">
@@ -201,12 +201,12 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                         {filteredRows.map((row, index) => (
                           <tr
                             key={index}
-                            className="border-t border-zinc-800/60 hover:bg-zinc-900/60"
+                            className="border-t border-white/[0.06] hover:bg-white/[0.03]"
                           >
                             {columns.map((col) => (
                               <td
                                 key={col}
-                                className="max-w-40 truncate px-2 py-1 font-mono text-zinc-300"
+                                className="max-w-40 truncate px-2 py-1 font-mono text-[#c3cad8]"
                               >
                                 <span title={row[col] ?? ""} className="block truncate">
                                   {row[col] ?? "—"}
@@ -216,7 +216,7 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                             <td className="px-2 py-1 text-right">
                               <button
                                 type="button"
-                                className="rounded px-1.5 py-0.5 text-[10px] text-emerald-400 hover:bg-emerald-500/10"
+                                className="rounded px-1.5 py-0.5 text-[10px] text-[#7df0dc] transition hover:bg-[#5eead4]/10"
                                 onClick={() => {
                                   const selector = `{__name__="${row.__name__ ?? selected}"${columns
                                     .map((c) => `,${c}="${row[c]}"`)
@@ -231,7 +231,7 @@ export function MetricBrowser({ tenantId, onInsert, onClose }: Props): JSX.Eleme
                         ))}
                         {filteredRows.length === 0 && !loadingSeries ? (
                           <tr>
-                            <td colSpan={columns.length + 1} className="px-2 py-4 text-zinc-600">
+                            <td colSpan={columns.length + 1} className="px-2 py-4 text-[#5f6779]">
                               No series match.
                             </td>
                           </tr>

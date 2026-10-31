@@ -340,6 +340,8 @@ export function ProfileView({
       reorder: "reordered",
       activate: "switched the active",
       revoke: "revoked a",
+      acknowledge: "acknowledged",
+      unacknowledge: "re-armed",
     };
     return `${verbs[verb] ?? verb} ${noun}`.trim();
   }
@@ -347,7 +349,7 @@ export function ProfileView({
   const accessBadge = (access: ProfileShare["access"]): JSX.Element => {
     const [audience, right] = access.split("_") as ["link" | "email", "view" | "edit"];
     return (
-      <span className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-300">
+      <span className="chip px-1.5 py-0.5 text-[10px] uppercase tracking-wide">
         {audience === "email" ? "emails" : "anyone"} · {right}
       </span>
     );
@@ -381,22 +383,24 @@ export function ProfileView({
 
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-20 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6">
+      <header className="chrome-bar sticky top-0 z-20">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-2.5 sm:px-6">
           <button
             type="button"
             onClick={onBack}
             title="Back to your dashboard"
-            className="flex items-center gap-2 text-sm font-semibold tracking-tight"
+            className="group flex items-center gap-2.5 text-sm font-semibold tracking-tight text-white"
           >
-            <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg border border-[#5eead4]/30 bg-[#5eead4]/10 text-[#5eead4]">
+              <Radio className="h-3.5 w-3.5" aria-hidden />
+            </span>
             Passthrough
           </button>
           <button
             type="button"
             onClick={onBack}
             title="Return to the dashboard"
-            className="rounded-md border border-zinc-800 px-2 py-1 text-xs text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+            className="btn btn-ghost px-2.5 py-1"
           >
             Back to dashboard
           </button>
@@ -437,8 +441,8 @@ export function ProfileView({
                 }}
                 className={`rounded-lg border px-2.5 py-1 transition ${
                   active
-                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-                    : "border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200"
+                    ? "border-[#5eead4]/40 bg-[#5eead4]/10 text-[#7df0dc]"
+                    : "border-white/[0.09] text-[#8d95a8] hover:border-white/20 hover:text-white"
                 }`}
               >
                 {label}
@@ -447,20 +451,20 @@ export function ProfileView({
           })}
         </nav>
 
-        <h1 className="mt-5 text-lg font-semibold tracking-tight">{hubTitle}</h1>
-        <p className="mt-1 text-sm text-zinc-400">{hubSubtitle}</p>
+        <h1 className="mt-6 text-2xl font-semibold tracking-tight text-white">{hubTitle}</h1>
+        <p className="mt-1.5 text-sm leading-relaxed text-[#8d95a8]">{hubSubtitle}</p>
 
         {/* Account settings: display name + password change. */}
         {showSecurity ? (
         <section className="mt-8" data-testid="account-settings">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-            <ShieldCheck className="h-4 w-4 text-emerald-300" aria-hidden />
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-white">
+            <ShieldCheck className="h-4 w-4 text-[#5eead4]" aria-hidden />
             Account
-            <span className="text-xs font-normal text-zinc-500">{user?.email}</span>
+            <span className="text-[11px] font-normal text-[#8d95a8]">{user?.email}</span>
           </h2>
-          <div className="mt-2 grid grid-cols-1 gap-4 rounded-xl border border-zinc-800/80 p-4 sm:grid-cols-2">
+          <div className="mt-2.5 grid grid-cols-1 gap-4 rounded-xl border border-white/[0.075] bg-white/[0.02] p-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="displayName" className="mb-1 block text-xs text-zinc-400">
+              <label htmlFor="displayName" className="field-label">
                 Display name
               </label>
               <div className="flex gap-2">
@@ -469,12 +473,12 @@ export function ProfileView({
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   maxLength={80}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500/50"
+                  className="field"
                 />
                 <button
                   type="button"
                   title="Save your display name (shown to org members and in shared rosters)"
-                  className="rounded-lg border border-zinc-800 px-3 text-xs text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300"
+                  className="btn btn-ghost shrink-0 px-3"
                   onClick={() => {
                     void handleSaveProfile();
                   }}
@@ -484,8 +488,8 @@ export function ProfileView({
               </div>
             </div>
             <div>
-              <p className="mb-1 flex items-center gap-1 text-xs text-zinc-400">
-                <KeyRound className="h-3 w-3" aria-hidden />
+              <p className="field-label flex items-center gap-1">
+                <KeyRound className="h-3 w-3 text-[#5f6779]" aria-hidden />
                 Change password
               </p>
               <input
@@ -494,7 +498,7 @@ export function ProfileView({
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 autoComplete="current-password"
-                className="mb-2 w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                className="field mb-2"
               />
               <div className="flex gap-2">
                 <input
@@ -503,13 +507,13 @@ export function ProfileView({
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   autoComplete="new-password"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  className="field"
                 />
                 <button
                   type="button"
                   title="Verify your current password, then set the new one — other sessions stay signed in"
                   disabled={currentPassword.length === 0 || newPassword.length < 8}
-                  className="whitespace-nowrap rounded-lg border border-zinc-800 px-3 text-xs text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300 disabled:opacity-40"
+                  className="btn btn-ghost shrink-0 whitespace-nowrap px-3"
                   onClick={() => {
                     void handleChangePassword();
                   }}
@@ -520,20 +524,20 @@ export function ProfileView({
             </div>
           </div>
           {accountMessage !== null ? (
-            <p className="mt-2 text-xs text-emerald-300" role="status">{accountMessage}</p>
+            <p className="mt-2 text-xs text-[#7df0dc]" role="status">{accountMessage}</p>
           ) : null}
           {accountError !== null ? (
-            <p className="mt-2 text-xs text-rose-300" role="alert">{accountError}</p>
+            <p className="mt-2 text-xs text-[#fda4af]" role="alert">{accountError}</p>
           ) : null}
 
           {/* Danger zone — privacy policy data-removal right. Two-step:
               first reveal, then type DELETE to arm the button. */}
-          <div className="mt-4 rounded-xl border border-rose-900/50 p-4" data-testid="danger-zone">
-            <p className="flex items-center gap-1 text-xs font-semibold text-rose-300">
-              <TriangleAlert className="h-3 w-3" aria-hidden />
+          <div className="mt-4 rounded-xl border border-[#fb7185]/30 bg-[#fb7185]/[0.04] p-4" data-testid="danger-zone">
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-[#fda4af]">
+              <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
               Delete account
             </p>
-            <p className="mt-1 text-xs text-zinc-500">
+            <p className="mt-1 text-xs leading-relaxed text-[#8d95a8]">
               Permanently removes your account, your workspace (dashboards,
               widgets, connections, alerts, and every share link), and your
               org memberships. This cannot be undone.
@@ -545,13 +549,13 @@ export function ProfileView({
                   onChange={(e) => setDeleteConfirmText(e.target.value)}
                   placeholder='Type DELETE to confirm'
                   aria-label='Type DELETE to confirm account deletion'
-                  className="w-44 rounded-lg border border-rose-900/60 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 outline-none focus:border-rose-500/60"
+                  className="w-44 rounded-lg border border-[#fb7185]/40 bg-black/50 px-3 py-2 text-sm text-[#e6e9f0] placeholder-[#5f6779] outline-none transition focus:border-[#fb7185]/70"
                 />
                 <button
                   type="button"
                   disabled={deleteConfirmText !== "DELETE" || deleteInProgress}
                   data-testid="delete-account-confirm"
-                  className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-rose-500 disabled:opacity-40"
+                  className="rounded-lg bg-[#e11d48] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#f43f5e] disabled:opacity-40"
                   onClick={() => {
                     void handleDeleteAccount();
                   }}
@@ -560,7 +564,7 @@ export function ProfileView({
                 </button>
                 <button
                   type="button"
-                  className="text-xs text-zinc-500 hover:text-zinc-300"
+                  className="btn btn-quiet text-xs"
                   onClick={() => {
                     setDeleteArmed(false);
                     setDeleteConfirmText("");
@@ -573,7 +577,7 @@ export function ProfileView({
               <button
                 type="button"
                 data-testid="delete-account-arm"
-                className="mt-2 rounded-lg border border-rose-900/60 px-3 py-2 text-xs text-rose-300 transition hover:border-rose-500/60 hover:text-rose-200"
+                className="mt-2 rounded-lg border border-rose-900/60 px-3 py-2 text-xs text-[#fda4af] transition hover:border-rose-500/60 hover:text-rose-200"
                 onClick={() => setDeleteArmed(true)}
               >
                 Delete my account…
@@ -586,10 +590,10 @@ export function ProfileView({
         {/* Organizations: create/join, attach workspace, member roster. */}
         {showOrgs ? (
         <section className="mt-8" data-testid="orgs-section">
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-            <Building2 className="h-4 w-4 text-emerald-300" aria-hidden />
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-white">
+            <Building2 className="h-4 w-4 text-[#5eead4]" aria-hidden />
             Organizations
-            <span className="text-xs font-normal text-zinc-500">
+            <span className="text-[11px] font-normal text-[#8d95a8]">
               share your workspace with your whole team at once
             </span>
           </h2>
@@ -599,13 +603,13 @@ export function ProfileView({
               onChange={(e) => setNewOrgName(e.target.value)}
               placeholder="New org name"
               maxLength={64}
-              className="w-40 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+              className="field w-40 text-xs"
             />
             <button
               type="button"
               disabled={orgBusy || newOrgName.trim().length < 2}
               title="Create a shared workspace and get an invite code for teammates"
-              className="flex items-center gap-1 rounded-lg bg-emerald-500/90 px-3 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
+              className="btn btn-primary gap-1 px-3 py-2"
               onClick={() => {
                 void handleCreateOrg();
               }}
@@ -617,13 +621,13 @@ export function ProfileView({
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
               placeholder="Invite code to join"
-              className="w-44 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+              className="field w-44 text-xs"
             />
             <button
               type="button"
               disabled={orgBusy || inviteCode.trim().length === 0}
               title="Join a teammate's organization using the invite code they shared"
-              className="flex items-center gap-1 rounded-lg border border-zinc-800 px-3 py-2 text-xs text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300 disabled:opacity-50"
+              className="btn btn-ghost gap-1 px-3 py-2"
               onClick={() => {
                 void handleJoinOrg();
               }}
@@ -633,14 +637,14 @@ export function ProfileView({
             </button>
           </div>
           {orgMessage !== null ? (
-            <p className="mt-2 text-xs text-emerald-300" role="status">{orgMessage}</p>
+            <p className="mt-2 text-xs text-[#7df0dc]" role="status">{orgMessage}</p>
           ) : null}
           {orgError !== null ? (
-            <p className="mt-2 text-xs text-rose-300" role="alert">{orgError}</p>
+            <p className="mt-2 text-xs text-[#fda4af]" role="alert">{orgError}</p>
           ) : null}
 
           {orgs.length === 0 ? (
-            <p className="mt-2 rounded-xl border border-dashed border-zinc-800 px-4 py-4 text-center text-xs text-zinc-500">
+            <p className="mt-2 rounded-xl border border-dashed border-white/[0.12] px-4 py-4 text-center text-xs leading-relaxed text-[#8d95a8]">
               No organizations yet — create one, or join with a code from a
               teammate. Attach your workspace to share everything you build.
             </p>
@@ -649,12 +653,12 @@ export function ProfileView({
               {orgs.map((org) => (
                 <li
                   key={org.id}
-                  className="rounded-xl border border-zinc-800/80 px-4 py-3"
+                  className="rounded-xl border border-white/[0.075] bg-white/[0.02] px-4 py-3"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-medium text-zinc-200">{org.name}</p>
-                      <p className="text-[11px] text-zinc-500">
+                      <p className="text-sm font-medium text-[#e6e9f0]">{org.name}</p>
+                      <p className="text-[11px] text-[#8d95a8]">
                         {org.role === "owner" ? "You own this org" : "Member"}
                         {org.inviteCode !== undefined
                           ? ` · invite code ${org.inviteCode}`
@@ -667,7 +671,7 @@ export function ProfileView({
                           <button
                             type="button"
                             title="Copy the invite code"
-                            className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+                            className="btn btn-ghost px-2 py-1 text-[11px]"
                             onClick={() => {
                               void navigator.clipboard.writeText(org.inviteCode ?? "").catch(() => undefined);
                             }}
@@ -678,7 +682,7 @@ export function ProfileView({
                             type="button"
                             title="Invalidate the old code and mint a new one"
                             disabled={orgBusy}
-                            className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+                            className="btn btn-ghost px-2 py-1 text-[11px]"
                             onClick={() => {
                               void handleRotate(org);
                             }}
@@ -690,7 +694,7 @@ export function ProfileView({
                       <button
                         type="button"
                         title="Show or hide the member roster for this org"
-                        className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+                        className="btn btn-ghost px-2 py-1 text-[11px]"
                         onClick={() => expandOrg(org)}
                       >
                         {membersCache[org.id] === undefined ? "Members" : "Hide"}
@@ -699,7 +703,7 @@ export function ProfileView({
                         type="button"
                         title="Attach your workspace — every org member can then open it"
                         disabled={orgBusy}
-                        className="rounded-md border border-emerald-500/40 px-2 py-1 text-[11px] text-emerald-300 transition hover:bg-emerald-500/10"
+                        className="btn btn-ghost border-[#5eead4]/40 px-2 py-1 text-[11px] text-[#7df0dc] hover:bg-[#5eead4]/10"
                         onClick={() => {
                           void handleAttach(org);
                         }}
@@ -709,19 +713,19 @@ export function ProfileView({
                     </div>
                   </div>
                   {membersCache[org.id] !== undefined ? (
-                    <ul className="mt-2 flex flex-col gap-1 border-t border-zinc-800/60 pt-2">
+                    <ul className="mt-2 flex flex-col gap-1 border-t border-white/[0.075] pt-2">
                       {(membersCache[org.id] ?? []).map((member) => (
                         <li
                           key={member.email}
                           className="flex items-center justify-between text-xs"
                         >
-                          <span className="text-zinc-300">
+                          <span className="text-[#c3cad8]">
                             {member.displayName ?? member.email}
                             {member.displayName !== null ? (
-                              <span className="ml-1 text-zinc-600">({member.email})</span>
+                              <span className="ml-1 text-[#5f6779]">({member.email})</span>
                             ) : null}
                           </span>
-                          <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+                          <span className="text-[10px] uppercase tracking-wide text-[#8d95a8]">
                             {member.role}
                           </span>
                         </li>
@@ -736,7 +740,7 @@ export function ProfileView({
             <button
               type="button"
               title="Org members immediately lose access to this workspace's dashboards"
-              className="mt-2 text-[11px] text-zinc-500 underline-offset-2 hover:text-rose-300 hover:underline"
+              className="btn btn-quiet mt-2 text-[11px] underline-offset-2 hover:underline"
               onClick={() => {
                 void handleDetach();
               }}
@@ -748,7 +752,7 @@ export function ProfileView({
         ) : null}
 
         {error !== null ? (
-          <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300" role="alert">
+          <p className="mt-4 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-[#fda4af]" role="alert">
             {error}
           </p>
         ) : null}
@@ -761,50 +765,50 @@ export function ProfileView({
             type="button"
             onClick={() => setActivityOpen((open) => !open)}
             title="Who created, edited, or deleted dashboards, widgets, connections, alerts, and shares — newest first"
-            className="flex w-full items-center gap-2 text-sm font-semibold text-zinc-200"
+            className="flex w-full items-center gap-2 text-[15px] font-semibold tracking-tight text-white transition hover:text-[#7df0dc]"
           >
-            <History className="h-4 w-4 text-emerald-300" aria-hidden />
+            <History className="h-4 w-4 text-[#5eead4]" aria-hidden />
             Activity
-            <span className="text-xs font-normal text-zinc-500">
+            <span className="text-[11px] font-normal text-[#8d95a8]">
               who changed what in your workspace
             </span>
-            <span className="ml-auto text-xs text-zinc-500">{activityOpen ? "Hide" : "Show"}</span>
+            <span className="ml-auto text-[11px] text-[#5f6779]">{activityOpen ? "Hide" : "Show"}</span>
           </button>
           ) : (
-          <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-            <History className="h-4 w-4 text-emerald-300" aria-hidden />
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-white">
+            <History className="h-4 w-4 text-[#5eead4]" aria-hidden />
             Activity
-            <span className="text-xs font-normal text-zinc-500">
+            <span className="text-[11px] font-normal text-[#8d95a8]">
               who changed what in your workspace
             </span>
           </h2>
           )}
           {activityOpen ? (
             activity === null ? (
-              <p className="mt-2 text-sm text-zinc-500">Loading activity…</p>
+              <p className="mt-2 text-sm text-[#8d95a8]">Loading activity…</p>
             ) : activity.length === 0 ? (
-              <p className="mt-2 rounded-xl border border-dashed border-zinc-800 px-4 py-4 text-center text-xs text-zinc-500">
+              <p className="mt-2 rounded-xl border border-dashed border-white/[0.12] px-4 py-4 text-center text-xs leading-relaxed text-[#8d95a8]">
                 No changes recorded yet — edits to dashboards, connections, alerts, and shares will appear here.
               </p>
             ) : (
-              <ul className="mt-2 divide-y divide-zinc-800/70 overflow-hidden rounded-xl border border-zinc-800/80">
+              <ul className="mt-2 divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/[0.075] bg-white/[0.02]">
                 {activity.map((entry) => (
                   <li key={entry.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
                     <div className="min-w-0">
-                      <p className="text-xs text-zinc-200">
-                        <span className="font-medium text-zinc-100">
+                      <p className="text-xs text-[#c3cad8]">
+                        <span className="font-medium text-[#e6e9f0]">
                           {entry.actorEmail ?? "A share link"}
                         </span>{" "}
                         {describeActivity(entry)}
                       </p>
                       {entry.target !== null ? (
-                        <p className="mt-0.5 truncate text-[11px] text-zinc-500">“{entry.target}”</p>
+                        <p className="mt-0.5 truncate text-[11px] text-[#8d95a8]">“{entry.target}”</p>
                       ) : null}
                     </div>
                     <time
                       dateTime={entry.createdAt}
                       title={new Date(entry.createdAt).toLocaleString()}
-                      className="text-[11px] text-zinc-600"
+                      className="text-[11px] text-[#5f6779]"
                     >
                       {new Date(entry.createdAt).toLocaleString()}
                     </time>
@@ -818,24 +822,24 @@ export function ProfileView({
 
         {loading ? (
           showSharing ? (
-            <p className="mt-8 text-sm text-zinc-500">Loading shares…</p>
+            <p className="mt-8 text-sm text-[#8d95a8]">Loading shares…</p>
           ) : null
         ) : showSharing ? (
           <>
             <section className="mt-6">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-                <Send className="h-4 w-4 text-emerald-300" aria-hidden />
+              <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-white">
+                <Send className="h-4 w-4 text-[#5eead4]" aria-hidden />
                 Created by me
-                <span className="text-xs font-normal text-zinc-500">
+                <span className="text-[11px] font-normal text-[#8d95a8]">
                   ({created.length})
                 </span>
               </h2>
               {created.length === 0 ? (
-                <p className="mt-2 rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-center text-xs text-zinc-500">
+                <p className="mt-2 rounded-xl border border-dashed border-white/[0.12] px-4 py-6 text-center text-xs text-[#8d95a8]">
                   No share links yet — use the Share button on your dashboard.
                 </p>
               ) : (
-                <ul className="mt-2 divide-y divide-zinc-800/70 overflow-hidden rounded-xl border border-zinc-800/80">
+                <ul className="mt-2 divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/[0.075] bg-white/[0.02]">
                   {created.map((share) => (
                     <li
                       key={share.id}
@@ -845,18 +849,18 @@ export function ProfileView({
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="truncate font-mono text-xs text-zinc-200">
+                          <span className="truncate font-mono text-xs text-[#c3cad8]">
                             {share.url}
                           </span>
                           {accessBadge(share.access)}
                           {share.revoked ? (
-                            <span className="flex items-center gap-1 rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-rose-300">
+                            <span className="flex items-center gap-1 rounded bg-[#fb7185]/[0.15] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[#fda4af]">
                               <X className="h-2.5 w-2.5" aria-hidden />
                               Revoked
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-0.5 text-[11px] text-zinc-500">
+                        <p className="mt-0.5 text-[11px] text-[#8d95a8]">
                           label “{share.label}” · created{" "}
                           {new Date(share.createdAt).toLocaleDateString()}
                           {share.access.startsWith("email") &&
@@ -872,7 +876,7 @@ export function ProfileView({
                               type="button"
                               title="Copy the share link"
                               onClick={() => copyLink(share)}
-                              className="flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+                              className="flex items-center gap-1 btn btn-ghost px-2 py-1 text-[11px]"
                             >
                               <Link2 className="h-3 w-3" aria-hidden />
                               {copiedId === share.id ? "Copied" : "Copy"}
@@ -883,13 +887,13 @@ export function ProfileView({
                               onClick={() => {
                                 void handleRevoke(share);
                               }}
-                              className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-rose-300/90 transition hover:border-rose-500/40 hover:bg-rose-500/10"
+                              className="btn btn-danger px-2 py-1 text-[11px]"
                             >
                               Revoke
                             </button>
                           </>
                         ) : (
-                          <span className="text-[11px] text-zinc-600">
+                          <span className="text-[11px] text-[#5f6779]">
                             access removed
                           </span>
                         )}
@@ -901,19 +905,19 @@ export function ProfileView({
             </section>
 
             <section className="mt-8">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-200">
-                <Inbox className="h-4 w-4 text-emerald-300" aria-hidden />
+              <h2 className="flex items-center gap-2 text-[15px] font-semibold tracking-tight text-white">
+                <Inbox className="h-4 w-4 text-[#5eead4]" aria-hidden />
                 Shared with me
-                <span className="text-xs font-normal text-zinc-500">
+                <span className="text-[11px] font-normal text-[#8d95a8]">
                   ({sharedWithMe.length})
                 </span>
               </h2>
               {sharedWithMe.length === 0 ? (
-                <p className="mt-2 rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-center text-xs text-zinc-500">
+                <p className="mt-2 rounded-xl border border-dashed border-white/[0.12] px-4 py-6 text-center text-xs text-[#8d95a8]">
                   No dashboards shared with your email yet.
                 </p>
               ) : (
-                <ul className="mt-2 divide-y divide-zinc-800/70 overflow-hidden rounded-xl border border-zinc-800/80">
+                <ul className="mt-2 divide-y divide-white/[0.06] overflow-hidden rounded-xl border border-white/[0.075] bg-white/[0.02]">
                   {sharedWithMe.map((share) => (
                     <li
                       key={share.id}
@@ -923,17 +927,17 @@ export function ProfileView({
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="truncate font-mono text-xs text-zinc-200">
+                          <span className="truncate font-mono text-xs text-[#c3cad8]">
                             {share.url}
                           </span>
                           {accessBadge(share.access)}
                           {share.revoked ? (
-                            <span className="rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-rose-300">
+                            <span className="rounded bg-[#fb7185]/[0.15] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[#fda4af]">
                               Revoked
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-0.5 text-[11px] text-zinc-500">
+                        <p className="mt-0.5 text-[11px] text-[#8d95a8]">
                           label “{share.label}” · shared{" "}
                           {new Date(share.createdAt).toLocaleDateString()}
                         </p>
@@ -944,13 +948,13 @@ export function ProfileView({
                           title="Open the shared dashboard in a new tab"
                           target="_blank"
                           rel="noreferrer"
-                          className="flex items-center gap-1 rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-emerald-300 transition hover:border-emerald-500/40"
+                          className="btn btn-ghost gap-1 border-[#5eead4]/40 px-2 py-1 text-[11px] text-[#7df0dc]"
                         >
                           <ExternalLink className="h-3 w-3" aria-hidden />
                           Open
                         </a>
                       ) : (
-                        <span className="text-[11px] text-zinc-600">
+                        <span className="text-[11px] text-[#5f6779]">
                           access removed
                         </span>
                       )}

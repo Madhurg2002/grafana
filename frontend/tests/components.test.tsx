@@ -756,3 +756,64 @@ describe("ResetPage", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("AlertManager acknowledgement", () => {
+  const firingAlert = {
+    id: 12,
+    tenant_id: "team-9",
+    title: "CPU too high",
+    promql: "up",
+    comparator: ">",
+    threshold: 90,
+    for_seconds: 0,
+    webhook_url: null,
+    enabled: true,
+    state: "firing",
+    first_breach_at: new Date().toISOString(),
+    firing_time: new Date().toISOString(),
+    resolved_time: null,
+    last_value: 97.5,
+    last_eval_at: new Date().toISOString(),
+    acknowledged_at: null,
+    acknowledged_until: null,
+    acknowledged_by: null,
+    created_at: new Date().toISOString(),
+  };
+
+  it("acks a firing alert through the API", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/ack")) {
+        return new Response(
+          JSON.stringify(
+            init?.method === "DELETE"
+              ? { cleared: true }
+              : { acknowledged: true, until: new Date(Date.now() + 3_600_000).toISOString() }
+          ),
+          { status: 200 }
+        );
+      }
+      if (url.includes("/api/alerts/team-9")) {
+        return new Response(JSON.stringify({ alerts: [firingAlert] }), { status: 200 });
+      }
+      return new Response(JSON.stringify({}), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { AlertManager } = await import("../src/components/AlertManager");
+    const user = userEvent.setup();
+    render(<AlertManager tenantId="team-9" />);
+
+    await user.click(await screen.findByTestId("ack-alert-12"));
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          (call) =>
+            String(call[0]).includes("/api/alerts/team-9/12/ack") &&
+            call[1]?.method === "POST"
+        )
+      ).toBe(true);
+    });
+  });
+});

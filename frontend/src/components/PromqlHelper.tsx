@@ -275,7 +275,7 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
       <button
         type="button"
         title="Starter queries and the metric catalog for this upstream — opens a modal"
-        className="flex items-center gap-1 text-[11px] text-emerald-400 transition hover:text-emerald-300"
+        className="btn btn-quiet gap-1 px-0 text-[11px] text-[#7df0dc] hover:text-[#5eead4]"
         onClick={() => setShowHelper(true)}
       >
         <Sparkles className="h-3 w-3" aria-hidden />
@@ -287,7 +287,7 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
       {showList && anchor !== null ? (
         <div
           ref={listRef}
-          className="fixed z-[60] max-h-56 w-80 max-w-[90vw] overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-950 shadow-2xl"
+          className="fixed z-[60] max-h-56 w-80 max-w-[90vw] overflow-y-auto rounded-lg border border-white/[0.12] bg-[#080a0e] shadow-2xl"
           style={{ top: anchor.top, left: anchor.left }}
           data-testid="promql-suggestions"
           role="listbox"
@@ -306,26 +306,26 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
               }}
               onMouseEnter={() => setHighlight(i)}
               className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left font-mono text-[11px] transition ${
-                i === highlight ? "bg-emerald-500/15 text-emerald-200" : "text-zinc-300 hover:bg-zinc-900"
+                i === highlight ? "bg-[#5eead4]/[0.12] text-[#7df0dc]" : "text-[#c3cad8] hover:bg-white/[0.05]"
               }`}
             >
               <span className="min-w-0 flex-1 truncate">{s.text}</span>
               <span
                 className={`shrink-0 text-[9px] uppercase tracking-wide ${
                   s.kind === "metric"
-                    ? "text-emerald-500"
+                    ? "text-[#5eead4]"
                     : s.kind === "function"
-                      ? "text-sky-400"
+                      ? "text-[#818cf8]"
                       : s.kind === "label"
-                        ? "text-violet-400"
-                        : "text-zinc-500"
+                        ? "text-[#c4b5fd]"
+                        : "text-[#5f6779]"
                 }`}
               >
                 {s.kind}
               </span>
             </button>
           ))}
-          <div className="border-t border-zinc-800 px-2.5 py-1 text-[9px] text-zinc-600">
+          <div className="border-t border-white/[0.075] px-2.5 py-1 text-[9px] text-[#5f6779]">
             ↑↓ navigate · Enter accept · Esc dismiss{suggestions.length > MAX_VISIBLE ? ` · ${suggestions.length} matches` : ""}
           </div>
         </div>
@@ -334,7 +334,7 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
       {/* Full helper as a centered modal — clipped by nothing. */}
       {showHelper ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-label="PromQL helper"
@@ -345,13 +345,13 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
           }}
         >
           <div
-            className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl"
+            className="glass-card flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden bg-[#080a0e] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-white/[0.075] px-4 py-3">
               <div>
-                <p className="text-sm font-semibold text-zinc-200">PromQL helper</p>
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[15px] font-semibold tracking-tight text-white">PromQL helper</p>
+                <p className="text-[11px] text-[#8d95a8]">
                   Starter queries and the metric catalog for this upstream. Click anything to insert it.
                 </p>
               </div>
@@ -359,7 +359,7 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
                 type="button"
                 aria-label="Close helper"
                 onClick={() => setShowHelper(false)}
-                className="rounded p-1 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300"
+                className="rounded-md p-1 text-[#5f6779] hover:bg-white/[0.06] hover:text-white"
               >
                 <X className="h-4 w-4" aria-hidden />
               </button>
@@ -367,7 +367,7 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
 
             <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
               <section>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                <p className="eyebrow mb-2">
                   Starter queries (checked against your upstream)
                 </p>
                 <ul className="grid max-h-64 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">
@@ -385,13 +385,13 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
                           }
                           className={`w-full rounded-lg px-2 py-1.5 text-left text-xs transition ${
                             unavailable
-                              ? "cursor-not-allowed text-zinc-600"
-                              : "text-zinc-300 hover:bg-zinc-900 hover:text-emerald-200"
+                              ? "cursor-not-allowed text-[#3f4657]"
+                              : "text-[#c3cad8] hover:bg-white/[0.05] hover:text-[#7df0dc]"
                           }`}
                           onClick={() => applyRecipe(recipe)}
                         >
                           <span className="block font-medium">{recipe.title}</span>
-                          <span className="block truncate font-mono text-[10px] text-zinc-500">
+                          <span className="block truncate font-mono text-[10px] text-[#5f6779]">
                             {recipe.promql}
                           </span>
                         </button>
@@ -402,10 +402,10 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
               </section>
 
               <section>
-                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                <p className="eyebrow mb-1">
                   Metrics on this upstream ({metricNames.length})
                 </p>
-                <p className="mb-2 text-[11px] text-zinc-600">
+                <p className="mb-2 text-[11px] leading-relaxed text-[#5f6779]">
                   Click a metric to append it to the query. Type in the query box for predictive suggestions.
                 </p>
                 <div className="flex max-h-40 flex-wrap gap-1 overflow-y-auto">
@@ -413,7 +413,7 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
                     <button
                       key={name}
                       type="button"
-                      className="max-w-full truncate rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400 hover:bg-emerald-500/10 hover:text-emerald-300"
+                      className="max-w-full truncate rounded border border-white/[0.075] bg-white/[0.03] px-1.5 py-0.5 font-mono text-[10px] text-[#8d95a8] transition hover:border-[#5eead4]/30 hover:bg-[#5eead4]/10 hover:text-[#7df0dc]"
                       onClick={() => {
                         onChange(`${value}${value.length > 0 && !/\s$/.test(value) ? " " : ""}${name}`);
                         inputRef?.current?.focus();
@@ -423,7 +423,7 @@ export function PromqlHelper({ tenantId, value, onChange, inputRef, registerTrig
                     </button>
                   ))}
                   {metricNames.length === 0 ? (
-                    <p className="text-[11px] text-zinc-600">
+                    <p className="text-[11px] text-[#5f6779]">
                       No metric catalog available — the upstream may be unreachable.
                     </p>
                   ) : null}

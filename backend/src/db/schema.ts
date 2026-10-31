@@ -771,6 +771,11 @@ export interface AlertRow {
   resolved_time: string | null;
   last_value: number | null;
   last_eval_at: string | null;
+  /** Acknowledgement: NULL = nobody has taken it (migration 019). */
+  acknowledged_at: string | null;
+  /** NULL with an ack set = indefinite; otherwise the ack auto-expires. */
+  acknowledged_until: string | null;
+  acknowledged_by: string | null;
   created_at: string;
 }
 
@@ -863,4 +868,108 @@ export async function recordAlertEvaluation(id: number, patch: AlertEvaluationPa
       id,
     ]
   );
+}
+
+// ---------------------------------------------------------------------------
+// Alert acknowledgement + transition history (migrations 019 / 020)
+// ---------------------------------------------------------------------------
+
+/** Takes (or replaces) an acknowledgement. `until` = null means indefinite. */
+export async function acknowledgeAlert(
+  tenantId: string,
+  alertId: number,
+  until: string | null,
+  by: string | null
+): Promise<boolean> {
+  const result = await getPool().query(
+    `UPDATE alerts
+     SET acknowledged_at = NOW(), acknowledged_until = $1, acknowledged_by = $2
+     WHERE id = $3 AND tenant_id = $4`,
+    [until, by, alertId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Clears an acknowledgement — notifications resume on the next transition. */
+export async function clearAlertAcknowledgement(
+  tenantId: string,
+  alertId: number
+): Promise<boolean> {
+  const result = await getPool().query(
+    `UPDATE alerts
+     SET acknowledged_at = NULL, acknowledged_until = NULL, acknowledged_by = NULL
+     WHERE id = $1 AND tenant_id = $2`,
+    [alertId, tenantId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Every alert currently firing for a tenant, newest firing first. */
+export async function listFiringAlerts(tenantId: string): Promise<AlertRow[]> {
+  const result = await getPool().query<AlertRow>(
+    `SELECT * FROM alerts
+     WHERE tenant_id = $1 AND state = 'firing' AND enabled = TRUE
+     ORDER BY firing_time DESC NULLS LAST`,
+    [tenantId]
+  );
+  return result.rows;
+}
+
+export interface AlertEventRecord {
+  alertId: number;
+  tenantId: string;
+  state: "firing" | "resolved";
+  value: number | null;
+  threshold: number;
+  comparator: string;
+  acknowledged: boolean;
+  at: string;
+}
+
+export interface AlertEventRow {
+  id: number;
+  alert_id: number;
+  tenant_id: string;
+  state: "firing" | "resolved";
+  value: number | null;
+  threshold: number;
+  comparator: string;
+  acknowledged: boolean;
+  created_at: string;
+}
+
+/** Appends one firing/resolved transition to the alert's history. */
+export async function recordAlertEvent(event: AlertEventRecord): Promise<void> {
+  await getPool().query(
+    `INSERT INTO alert_events
+       (alert_id, tenant_id, state, value, threshold, comparator, acknowledged, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      event.alertId,
+      event.tenantId,
+      event.state,
+      event.value,
+      event.threshold,
+      event.comparator,
+      event.acknowledged,
+      event.at,
+    ]
+  );
+}
+
+/** Newest-first transition history for one alert, scoped to its tenant. */
+export async function listAlertEvents(
+  tenantId: string,
+  alertId: number,
+  limit = 50
+): Promise<AlertEventRow[]> {
+  const bounded = Math.max(1, Math.min(200, Math.round(limit)));
+  const result = await getPool().query<AlertEventRow>(
+    `SELECT * FROM alert_events
+     WHERE tenant_id = $1 AND alert_id = $2
+     ORDER BY created_at DESC
+     LIMIT $3`,
+    [tenantId, alertId, bounded]
+  );
+  return result.rows;
 }

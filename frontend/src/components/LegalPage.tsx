@@ -113,7 +113,7 @@ export function LegalPage({ doc, onBack }: { doc: LegalDoc; onBack?: () => void 
   const content = CONTENT[doc];
 
   return (
-    <div className="min-h-screen bg-zinc-950 px-4 py-10 text-zinc-200">
+    <div className="min-h-screen px-4 py-12 text-[#e6e9f0]">
       <div
         className={`mx-auto max-w-2xl transition-opacity duration-500 ${entered ? "opacity-100" : "opacity-0"}`}
       >
@@ -126,28 +126,29 @@ export function LegalPage({ doc, onBack }: { doc: LegalDoc; onBack?: () => void 
               window.history.back();
             }
           }}
-          className="mb-6 text-xs text-zinc-500 transition hover:text-zinc-300"
+          className="btn btn-ghost mb-8"
         >
           ← Back
         </button>
-        <h1 className="text-2xl font-semibold text-zinc-100">{content.title}</h1>
-        <p className="mt-1 text-xs text-zinc-500">{content.updated}</p>
-        <div className="mt-6 space-y-6">
+        <p className="eyebrow">Legal</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">{content.title}</h1>
+        <p className="mt-2 text-[11px] text-[#5f6779]">{content.updated}</p>
+        <div className="mt-8 space-y-7">
           {content.sections.map((section) => (
             <section key={section.heading}>
-              <h2 className="text-sm font-semibold text-emerald-300">{section.heading}</h2>
+              <h2 className="eyebrow text-[#7df0dc]">{section.heading}</h2>
               {section.body.map((paragraph) => (
-                <p key={paragraph.slice(0, 24)} className="mt-2 text-sm leading-relaxed text-zinc-400">
+                <p key={paragraph.slice(0, 24)} className="mt-2 text-sm leading-relaxed text-[#8d95a8]">
                   {paragraph}
                 </p>
               ))}
             </section>
           ))}
         </div>
-        <p className="mt-10 border-t border-zinc-900 pt-4 text-xs text-zinc-600">
+        <p className="mt-12 border-t border-white/[0.075] pt-5 text-xs text-[#5f6779]">
           Also read:{" "}
           <a
-            className="text-zinc-400 underline-offset-2 hover:text-emerald-300 hover:underline"
+            className="text-[#c3cad8] underline-offset-2 hover:text-[#7df0dc] hover:underline"
             href={doc === "privacy" ? "/terms" : "/privacy"}
           >
             {doc === "privacy" ? "Terms of Service" : "Privacy Policy"}

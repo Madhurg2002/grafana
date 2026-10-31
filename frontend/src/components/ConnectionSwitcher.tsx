@@ -138,7 +138,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-600"
+        className="btn btn-ghost px-2.5 py-1.5"
         aria-expanded={open}
       >
         <span
@@ -154,17 +154,17 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
         {active !== null ? (
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              active.status === "connected" ? "bg-emerald-400" : "bg-rose-400"
+              active.status === "connected" ? "bg-[#5eead4]" : "bg-[#fb7185]"
             }`}
             aria-hidden
           />
         ) : null}
-        <ChevronDown className="h-3.5 w-3.5 text-zinc-500" aria-hidden />
+        <ChevronDown className="h-3.5 w-3.5 text-[#5f6779]" aria-hidden />
       </button>
 
       {open ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
           role="dialog"
           aria-modal="true"
           aria-label="Connections"
@@ -185,19 +185,19 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
           }}
         >
         <div
-          className="flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl"
+          className="glass-card flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden bg-[#080a0e] shadow-2xl"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="border-b border-zinc-800 px-5 py-4">
-            <p className="text-sm font-semibold text-zinc-100">Connections</p>
-            <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+          <div className="border-b border-white/[0.075] px-5 py-4">
+            <p className="text-[15px] font-semibold tracking-tight text-white">Connections</p>
+            <p className="mt-1 text-xs leading-relaxed text-[#8d95a8]">
               Every upstream you've connected. Click one to make it the active
               source for all dashboards, pages, and share links.
             </p>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
           {connections.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-center text-xs text-zinc-500">
+            <p className="rounded-xl border border-dashed border-white/[0.12] px-4 py-6 text-center text-xs text-[#8d95a8]">
               No stored connections yet — add your first upstream below.
             </p>
           ) : (
@@ -207,8 +207,8 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                   key={c.id}
                   className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 transition ${
                     c.isActive
-                      ? "border-emerald-500/30 bg-emerald-500/[0.06]"
-                      : "border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/60"
+                      ? "border-[#5eead4]/30 bg-[#5eead4]/[0.06]"
+                      : "border-white/[0.075] hover:border-white/20 hover:bg-white/[0.04]"
                   }`}
                 >
                   <button
@@ -222,23 +222,23 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                     }}
                   >
                     {c.isActive ? (
-                      <Check className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+                      <Check className="h-4 w-4 shrink-0 text-[#5eead4]" aria-hidden />
                     ) : (
                       <span className="h-4 w-4 shrink-0" aria-hidden />
                     )}
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-zinc-100" title={c.label}>
+                      <span className="block truncate text-sm font-medium text-[#e6e9f0]" title={c.label}>
                         {c.label}
                       </span>
                       <span
-                        className="mt-0.5 block truncate text-[11px] text-zinc-500"
+                        className="mt-0.5 block truncate text-[11px] text-[#8d95a8]"
                         title={`${c.upstreamType === "grafana" ? "Grafana" : "Prometheus"} · ${c.upstreamHost ?? "unknown host"}`}
                       >
                         {c.upstreamType === "grafana" ? "Grafana" : "Prometheus"} · {c.upstreamHost ?? "?"}
                       </span>
                     </span>
                     {c.isActive ? (
-                      <span className="ml-auto shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-300">
+                      <span className="chip chip-signal ml-auto shrink-0 px-2 py-0.5 text-[9px] uppercase tracking-[0.1em]">
                         Active
                       </span>
                     ) : null}
@@ -247,7 +247,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                     type="button"
                     aria-label={`Edit connection ${c.label}`}
                     title="Edit this connection — rename it, change the URL, or rotate the token"
-                    className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
+                    className="shrink-0 rounded-lg p-1.5 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
                     disabled={busy}
                     onClick={() => {
                       startEdit(c);
@@ -259,7 +259,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                     type="button"
                     aria-label={`Delete connection ${c.label}`}
                     title="Remove this connection — dashboards fall back to any other stored upstream"
-                    className="shrink-0 rounded-lg p-1.5 text-zinc-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+                    className="shrink-0 rounded-lg p-1.5 text-[#5f6779] transition hover:bg-[#fb7185]/10 hover:text-[#fb7185]"
                     disabled={busy}
                     onClick={() => {
                       void handleDelete(c.id);
@@ -274,8 +274,8 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
           </div>
 
           {editing !== null ? (
-            <div className="flex flex-col gap-2.5 border-t border-zinc-800 px-1 pt-3">
-              <p className="text-xs font-semibold text-zinc-300">
+            <div className="flex flex-col gap-2.5 border-t border-white/[0.075] px-3 pb-3 pt-3">
+              <p className="eyebrow text-[#c3cad8]">
                 Edit “{editing.label}”
               </p>
               <div>
@@ -284,9 +284,9 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                   onChange={(e) => setEditLabel(e.target.value)}
                   placeholder="Label"
                   maxLength={64}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  className="field text-xs"
                 />
-                <p className="mt-0.5 text-[10px] text-zinc-600">
+                <p className="mt-0.5 text-[10px] leading-relaxed text-[#5f6779]">
                   A short name shown in this dropdown.
                 </p>
               </div>
@@ -297,9 +297,9 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                   type="text"
                   inputMode="url"
                   placeholder="New URL — leave blank to keep current"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  className="field text-xs"
                 />
-                <p className="mt-0.5 text-[10px] text-zinc-600">
+                <p className="mt-0.5 text-[10px] leading-relaxed text-[#5f6779]">
                   Currently {editing.upstreamHost ?? "?"}. Changing it is probed
                   before saving — the old upstream stays if the new one is unreachable.
                 </p>
@@ -311,16 +311,16 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                   type="password"
                   placeholder="New token — blank keeps, “-” clears"
                   autoComplete="off"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  className="field text-xs"
                 />
-                <p className="mt-0.5 text-[10px] text-zinc-600">
+                <p className="mt-0.5 text-[10px] leading-relaxed text-[#5f6779]">
                   {editing.hasToken
                     ? "A token is stored (encrypted). Leave blank to keep it, type - to remove it."
                     : "No token stored. Leave blank, or paste a bearer token."}
                 </p>
               </div>
               {error !== null ? (
-                <p className="text-[11px] text-rose-400" role="alert">
+                <p className="text-[11px] text-[#fda4af]" role="alert">
                   {error}
                 </p>
               ) : null}
@@ -328,7 +328,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                 <button
                   type="button"
                   title="Save changes to this connection"
-                  className="flex-1 rounded-lg bg-emerald-500/90 px-2 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
+                  className="btn btn-primary flex-1"
                   disabled={busy || editLabel.trim().length === 0}
                   onClick={() => {
                     void handleSaveEdit();
@@ -338,7 +338,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg border border-zinc-800 px-2 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-600"
+                  className="btn btn-ghost"
                   onClick={() => {
                     resetEdit();
                     setError(null);
@@ -349,15 +349,15 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
               </div>
             </div>
           ) : adding ? (
-            <div className="flex flex-col gap-2.5 border-t border-zinc-800 px-1 pt-3">
+            <div className="flex flex-col gap-2.5 border-t border-white/[0.075] px-3 pb-3 pt-3">
               <div>
                 <input
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   placeholder="Label (e.g. prod, staging)"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  className="field text-xs"
                 />
-                <p className="mt-0.5 text-[10px] text-zinc-600">
+                <p className="mt-0.5 text-[10px] leading-relaxed text-[#5f6779]">
                   A short name shown in this dropdown — optional.
                 </p>
               </div>
@@ -368,9 +368,9 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                   type="text"
                   inputMode="url"
                   placeholder="10.0.0.5:9090 or https://prom.example.com"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  className="field text-xs"
                 />
-                <p className="mt-0.5 text-[10px] text-zinc-600">
+                <p className="mt-0.5 text-[10px] leading-relaxed text-[#5f6779]">
                   Prometheus or Grafana base URL — plain <span className="font-mono">ip:port</span> or a
                   full https URL. We detect the type and resolve Grafana to its Prometheus datasource.
                 </p>
@@ -381,14 +381,14 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                   onChange={(e) => setToken(e.target.value)}
                   type="password"
                   placeholder="Auth token (optional, encrypted)"
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 outline-none focus:border-emerald-500/50"
+                  className="field text-xs"
                 />
-                <p className="mt-0.5 text-[10px] text-zinc-600">
+                <p className="mt-0.5 text-[10px] leading-relaxed text-[#5f6779]">
                   Only if your upstream needs a bearer token. Stored AES-256-GCM encrypted, never displayed again.
                 </p>
               </div>
               {error !== null ? (
-                <p className="text-[11px] text-rose-400" role="alert">
+                <p className="text-[11px] text-[#fda4af]" role="alert">
                   {error}
                 </p>
               ) : null}
@@ -396,7 +396,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                 <button
                   type="button"
                   title="Verify the endpoint, save it encrypted, and make it the active source"
-                  className="flex-1 rounded-lg bg-emerald-500/90 px-2 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-50"
+                  className="btn btn-primary flex-1"
                   disabled={busy || url.trim().length === 0}
                   onClick={() => {
                     void handleAdd();
@@ -406,7 +406,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
                 </button>
                 <button
                   type="button"
-                  className="rounded-lg border border-zinc-800 px-2 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-600"
+                  className="btn btn-ghost"
                   onClick={() => {
                     setAdding(false);
                     setError(null);
@@ -420,7 +420,7 @@ export function ConnectionSwitcher({ tenantId, onActiveChanged }: Props): JSX.El
             <button
               type="button"
               title="Store another Prometheus or Grafana endpoint — switch between them anytime"
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-zinc-700 px-3 py-2.5 text-xs font-medium text-zinc-300 transition hover:border-emerald-500/40 hover:text-emerald-300"
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-white/[0.14] px-3 py-2.5 text-xs font-medium text-[#c3cad8] transition hover:border-[#5eead4]/40 hover:text-[#7df0dc]"
               onClick={() => setAdding(true)}
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />

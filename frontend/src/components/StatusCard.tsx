@@ -7,9 +7,9 @@ export const LEVEL_STYLES: Record<
   StatusLevel,
   { text: string; shadow: string; border: string }
 > = {
-  emerald: { text: "text-emerald-300", shadow: "shadow-glow-emerald", border: "border-emerald-500/30" },
-  amber: { text: "text-amber-300", shadow: "shadow-glow-amber", border: "border-amber-500/30" },
-  rose: { text: "text-rose-300", shadow: "shadow-glow-rose", border: "border-rose-500/30" },
+  emerald: { text: "text-[#34d399]", shadow: "shadow-glow-emerald", border: "border-[#34d399]/25" },
+  amber: { text: "text-[#fbbf24]", shadow: "shadow-glow-amber", border: "border-[#fbbf24]/25" },
+  rose: { text: "text-[#fb7185]", shadow: "shadow-glow-rose", border: "border-[#fb7185]/25" },
 };
 
 export interface StatusCardProps {
@@ -38,22 +38,27 @@ export function StatusCard({
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className={`glass-card flex flex-col justify-center p-5 ${style.border} ${style.shadow}`}
+      className={`glass-card flex flex-col justify-center p-5 pl-6 ${style.border} ${style.shadow}`}
       data-testid="status-card"
       {...(heightPx !== undefined ? { style: { height: `${heightPx}px` } } : {})}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wider text-zinc-400">{title}</span>
+      {/* Accent rail — the state reads at a glance without hunting the number. */}
+      <span
+        aria-hidden
+        className={`absolute inset-y-4 left-0 w-[3px] rounded-full bg-current ${style.text}`}
+      />
+      <div className="flex items-center justify-between gap-2">
+        <span className="eyebrow">{title}</span>
         <Icon className={`h-4 w-4 ${style.text}`} aria-hidden />
       </div>
       <div className="mt-3 flex items-baseline gap-1.5">
-        <span className={`text-3xl font-semibold tabular-nums ${style.text}`}>{value}</span>
+        <span className={`metric-value text-3xl ${style.text}`}>{value}</span>
         {unit !== undefined && (
-          <span className="text-sm text-zinc-400">{unit}</span>
+          <span className="text-sm font-medium text-[#8d95a8]">{unit}</span>
         )}
       </div>
       {subtitle !== undefined && (
-        <p className="mt-2 text-xs text-zinc-500">{subtitle}</p>
+        <p className="mt-2 text-[11px] text-[#5f6779]">{subtitle}</p>
       )}
     </motion.div>
   );

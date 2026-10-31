@@ -43,7 +43,7 @@ export function GaugeCard({ title, percent, level, query, onExportCsv, heightPx 
     >
       <div className="flex items-center justify-between">
         <span
-          className="block truncate text-xs uppercase tracking-wider text-zinc-400"
+          className="eyebrow block truncate"
           title={query !== undefined ? `${title} — ${query}` : title}
         >
           {title}
@@ -54,7 +54,7 @@ export function GaugeCard({ title, percent, level, query, onExportCsv, heightPx 
             data-testid="gauge-csv"
             title="Download this gauge's current value as CSV"
             aria-label={`Download ${title} as CSV`}
-            className="rounded p-1 text-zinc-600 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+            className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
             onClick={() => onExportCsv(title, clamped)}
           >
             <Download className="h-3 w-3" aria-hidden />
@@ -91,13 +91,17 @@ export function GaugeCard({ title, percent, level, query, onExportCsv, heightPx 
               angleAxisId={0}
               tick={false}
             />
-            <RadialBar background={{ fill: "#27272a" }} dataKey="value" cornerRadius={8} />
+            <RadialBar
+              background={{ fill: "rgba(255,255,255,0.07)" }}
+              dataKey="value"
+              cornerRadius={8}
+            />
           </RadialBarChart>
         </ResponsiveContainer>
       </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-center pb-0.5">
         <span
-          className="text-xl font-semibold tabular-nums"
+          className="metric-value text-2xl drop-shadow-[0_0_12px_rgba(0,0,0,0.6)]"
           style={{ color: LEVEL_COLORS[resolved] }}
         >
           {clamped.toFixed(1)}%

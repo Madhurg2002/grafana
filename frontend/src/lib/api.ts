@@ -1108,6 +1108,10 @@ export interface Alert {
   resolved_time: string | null;
   last_value: number | null;
   last_eval_at: string | null;
+  /** Acknowledgement (migration 019): null = nobody has taken it. */
+  acknowledged_at: string | null;
+  acknowledged_until: string | null;
+  acknowledged_by: string | null;
   created_at: string;
 }
 
@@ -1149,6 +1153,77 @@ export function deleteAlert(tenantId: string, alertId: number): Promise<{ remove
   return authedJson<{ removed: boolean }>(
     `/api/alerts/${encodeURIComponent(tenantId)}/${alertId}`,
     { method: "DELETE" }
+  );
+}
+
+/** An alert that is firing right now (badge hydration). */
+export interface FiringAlert {
+  alertId: number;
+  title: string;
+  state: "firing";
+  value: number | null;
+  threshold: number;
+  comparator: AlertComparator;
+  firedAt: string;
+  acknowledged: boolean;
+  acknowledgedUntil: string | null;
+  acknowledgedBy: string | null;
+}
+
+/** Seeds the header badge with alerts that were already firing on load. */
+export function fetchFiringAlerts(tenantId: string): Promise<{ alerts: FiringAlert[] }> {
+  return authedJson<{ alerts: FiringAlert[] }>(
+    `/api/alerts/${encodeURIComponent(tenantId)}/firing`
+  );
+}
+
+/**
+ * Takes an acknowledgement: silences outbound notifications for `minutes`
+ * (0 = until explicitly released) while evaluation and history continue.
+ */
+export function acknowledgeAlert(
+  tenantId: string,
+  alertId: number,
+  minutes = 60
+): Promise<{ acknowledged: boolean; until: string | null }> {
+  return authedJson<{ acknowledged: boolean; until: string | null }>(
+    `/api/alerts/${encodeURIComponent(tenantId)}/${alertId}/ack`,
+    { method: "POST", body: JSON.stringify({ minutes }) }
+  );
+}
+
+/** Releases an acknowledgement so notifications resume. */
+export function clearAlertAcknowledgement(
+  tenantId: string,
+  alertId: number
+): Promise<{ cleared: boolean }> {
+  return authedJson<{ cleared: boolean }>(
+    `/api/alerts/${encodeURIComponent(tenantId)}/${alertId}/ack`,
+    { method: "DELETE" }
+  );
+}
+
+/** One recorded firing/resolved transition. */
+export interface AlertEventEntry {
+  id: number;
+  alert_id: number;
+  tenant_id: string;
+  state: "firing" | "resolved";
+  value: number | null;
+  threshold: number;
+  comparator: string;
+  acknowledged: boolean;
+  created_at: string;
+}
+
+/** Newest-first transition history for one alert. */
+export function fetchAlertEvents(
+  tenantId: string,
+  alertId: number,
+  limit = 50
+): Promise<{ events: AlertEventEntry[] }> {
+  return authedJson<{ events: AlertEventEntry[] }>(
+    `/api/alerts/${encodeURIComponent(tenantId)}/${alertId}/events?limit=${limit}`
   );
 }
 

@@ -25,6 +25,8 @@ export type AuditAction =
   | "alert.create"
   | "alert.update"
   | "alert.delete"
+  | "alert.acknowledge"
+  | "alert.unacknowledge"
   | "share.create"
   | "share.revoke";
 

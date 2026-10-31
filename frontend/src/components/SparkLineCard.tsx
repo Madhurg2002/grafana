@@ -96,7 +96,7 @@ export function SparkLineCard({
     const point = current.points[current.points.length - 1];
     return point !== undefined ? Math.max(latestValue, point.value) : latestValue;
   }, 0);
-  const lineColors = [stroke, "#60a5fa", "#fbbf24", "#f472b6", "#a78bfa", "#38bdf8"];
+  const lineColors = [stroke, "#818cf8", "#fbbf24", "#f472b6", "#5eead4", "#38bdf8"];
 
   return (
     <motion.div
@@ -108,13 +108,13 @@ export function SparkLineCard({
     >
       <div className="flex items-center justify-between">
         <span
-          className="truncate text-xs uppercase tracking-wider text-zinc-400"
+          className="eyebrow truncate"
           title={query !== undefined ? `${title} — ${query}` : title}
         >
           {title}
         </span>
         <span className="flex items-center gap-2">
-          <span className="text-sm font-medium tabular-nums text-zinc-200">
+          <span className="metric-value text-base">
             {formatMetricValue(latest, unit)}
           </span>
           {series.length > 0 ? (
@@ -123,7 +123,7 @@ export function SparkLineCard({
               data-testid="sparkline-csv"
               title="Download this series as CSV"
               aria-label={`Download ${title} as CSV`}
-              className="rounded p-1 text-zinc-600 transition hover:bg-zinc-800/60 hover:text-zinc-300"
+              className="rounded-md p-1 text-[#5f6779] transition hover:bg-white/[0.06] hover:text-white"
               onClick={() => exportSeriesCsv(title, series, unit)}
             >
               <Download className="h-3 w-3" aria-hidden />
@@ -139,7 +139,7 @@ export function SparkLineCard({
           <AreaChart data={chartData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
             <defs>
               <linearGradient id={`grad-${title.replace(/\s+/g, "-")}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={stroke} stopOpacity={0.35} />
+                <stop offset="0%" stopColor={stroke} stopOpacity={0.28} />
                 <stop offset="100%" stopColor={stroke} stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -151,13 +151,16 @@ export function SparkLineCard({
             />
             <YAxis hide domain={[0, "auto"]} />
             <Tooltip
-              cursor={{ stroke: "#3f3f46", strokeWidth: 1 }}
+              cursor={{ stroke: "rgba(255,255,255,0.18)", strokeWidth: 1 }}
               contentStyle={{
-                background: "rgba(24,24,27,0.9)",
-                border: "1px solid #3f3f46",
-                borderRadius: 8,
+                background: "rgba(8,10,14,0.94)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 10,
                 fontSize: 12,
+                boxShadow: "0 18px 40px -24px rgba(0,0,0,0.95)",
               }}
+              itemStyle={{ color: "#e6e9f0" }}
+              labelStyle={{ color: "#8d95a8", fontSize: 10, letterSpacing: "0.06em" }}
               labelFormatter={(label: number) => formatChartTime(label)}
               formatter={(value: number, name: string) => [
                 formatMetricValue(value, unit),

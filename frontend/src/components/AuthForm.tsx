@@ -6,8 +6,7 @@ import { useAuth } from "../hooks/useAuth";
 
 export type AuthMode = "login" | "signup";
 
-const inputClass =
-  "w-full rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/40";
+const inputClass = "field";
 
 export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }): JSX.Element {
   const { applyAuth } = useAuth();
@@ -55,8 +54,8 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
       data-testid="auth-form"
     >
       <div className="flex items-center gap-2">
-        <Radio className="h-4 w-4 text-emerald-300" aria-hidden />
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
+        <Radio className="h-4 w-4 text-[#5eead4]" aria-hidden />
+        <h2 className="eyebrow text-[#c3cad8]">
           {mode === "signup" ? "Create your account" : "Sign in"}
         </h2>
       </div>
@@ -69,8 +68,8 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
       >
         {mode === "signup" ? (
           <div>
-            <label htmlFor="displayName" className="mb-1 block text-xs text-zinc-400">
-              Display name <span className="text-zinc-600">(optional)</span>
+            <label htmlFor="displayName" className="field-label">
+              Display name <span className="normal-case tracking-normal text-[#5f6779]">(optional)</span>
             </label>
             <input
               id="displayName"
@@ -83,7 +82,7 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
           </div>
         ) : null}
         <div>
-          <label htmlFor="email" className="mb-1 block text-xs text-zinc-400">
+          <label htmlFor="email" className="field-label">
             Email
           </label>
           <input
@@ -98,7 +97,7 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
           />
         </div>
         <div>
-          <label htmlFor="password" className="mb-1 block text-xs text-zinc-400">
+          <label htmlFor="password" className="field-label">
             Password
           </label>
           <input
@@ -115,13 +114,13 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
         </div>
 
         {error !== null ? (
-          <div role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+          <div role="alert" className="rounded-lg border border-[#fb7185]/40 bg-[#fb7185]/10 px-3 py-2 text-xs text-[#fda4af]">
             <p>{error}</p>
             {mode === "signup" && /already exists/i.test(error) ? (
               <button
                 type="button"
                 title="Switch to the sign-in form"
-                className="mt-1 font-semibold text-emerald-300 hover:text-emerald-200"
+                className="mt-1 font-semibold text-[#7df0dc] hover:text-[#5eead4]"
                 onClick={() => {
                   setMode("login");
                   setError(null);
@@ -137,7 +136,7 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
           type="submit"
           disabled={submitting}
           title={mode === "signup" ? "Create your free account" : "Sign in with your email and password"}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+          className="btn btn-primary w-full gap-2 px-4 py-2.5 text-sm"
         >
           {mode === "signup" ? <UserPlus className="h-4 w-4" aria-hidden /> : <LogIn className="h-4 w-4" aria-hidden />}
           {submitting ? "Working…" : mode === "signup" ? "Create account" : "Sign in"}
@@ -148,7 +147,7 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
             <a
               href="/reset"
               title="Start password recovery — we email you a reset link"
-              className="text-xs text-zinc-500 transition hover:text-emerald-300"
+              className="text-[11px] text-[#8d95a8] transition hover:text-[#7df0dc]"
             >
               Forgot password?
             </a>
@@ -156,12 +155,12 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
         ) : null}
       </form>
 
-      <p className="mt-4 text-center text-xs text-zinc-500">
+      <p className="mt-4 text-center text-xs text-[#8d95a8]">
         {mode === "signup" ? "Already have an account?" : "New here?"}{" "}
         <button
           type="button"
           title={mode === "signup" ? "Switch to the sign-in form" : "Switch to the sign-up form"}
-          className="font-semibold text-emerald-300 hover:text-emerald-200"
+          className="font-semibold text-[#7df0dc] hover:text-[#5eead4]"
           onClick={() => {
             setMode(mode === "signup" ? "login" : "signup");
             setError(null);
@@ -171,13 +170,13 @@ export function AuthForm({ initialMode = "login" }: { initialMode?: AuthMode }):
         </button>
       </p>
 
-      <p className="mt-6 text-center text-[11px] text-zinc-600">
+      <p className="mt-6 text-center text-[11px] leading-relaxed text-[#5f6779]">
         By continuing you agree to our{" "}
-        <a href="/terms" className="underline-offset-2 hover:text-zinc-400 hover:underline">
+        <a href="/terms" className="underline-offset-2 hover:text-[#c3cad8] hover:underline">
           Terms of Service
         </a>{" "}
         and acknowledge our{" "}
-        <a href="/privacy" className="underline-offset-2 hover:text-zinc-400 hover:underline">
+        <a href="/privacy" className="underline-offset-2 hover:text-[#c3cad8] hover:underline">
           Privacy Policy
         </a>.
       </p>

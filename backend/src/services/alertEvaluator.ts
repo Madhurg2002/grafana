@@ -1,10 +1,13 @@
 import { instantQuery } from "./prometheus.js";
 import {
+  clearAlertAcknowledgement,
   listEnabledAlerts,
   recordAlertEvaluation,
+  recordAlertEvent,
   type AlertRow,
 } from "../db/schema.js";
 import { sendWebhookNotification } from "./webhook.js";
+import { isAcknowledgementActive } from "./alertAcknowledgement.js";
 
 /**
  * Threshold-alert evaluator (docs/capabilities.md — Alerting).
@@ -34,6 +37,8 @@ export interface AlertEvent {
   comparator: string;
   promql: string;
   firedAt: string;
+  /** True when the transition happened while the alert was acknowledged. */
+  acknowledged: boolean;
 }
 
 type Listener = (event: AlertEvent) => void;
@@ -90,6 +95,15 @@ class AlertEvaluator {
 
   private async evaluate(alert: AlertRow): Promise<void> {
     const now = new Date().toISOString();
+    // An expired acknowledgement must not keep advertising "someone is on it".
+    // Clearing it here (not just ignoring it) keeps the UI honest.
+    if (
+      alert.acknowledged_at !== null &&
+      alert.acknowledged_at !== undefined &&
+      !isAcknowledgementActive(alert)
+    ) {
+      await clearAlertAcknowledgement(alert.tenant_id, alert.id).catch(() => undefined);
+    }
     try {
       const { result } = await instantQuery({
         tenantId: alert.tenant_id,
@@ -180,6 +194,7 @@ class AlertEvaluator {
     now: string,
     firstBreach?: string
   ): Promise<void> {
+    const acknowledged = isAcknowledgementActive(alert);
     await recordAlertEvaluation(alert.id, {
       state: to,
       firstBreachAt: to === "firing" ? firstBreach ?? now : null,
@@ -188,6 +203,18 @@ class AlertEvaluator {
       lastValue: value,
       lastEvalAt: now,
     });
+    // History is secondary to evaluation: a failed insert must never stop the
+    // state machine or the live listener fan-out.
+    await recordAlertEvent({
+      alertId: alert.id,
+      tenantId: alert.tenant_id,
+      state: to,
+      value,
+      threshold: alert.threshold,
+      comparator: alert.comparator,
+      acknowledged,
+      at: now,
+    }).catch(() => undefined);
     const event: AlertEvent = {
       alertId: alert.id,
       tenantId: alert.tenant_id,
@@ -198,6 +225,7 @@ class AlertEvaluator {
       comparator: alert.comparator,
       promql: alert.promql,
       firedAt: now,
+      acknowledged,
     };
     for (const listener of this.listeners) {
       try {
@@ -206,7 +234,9 @@ class AlertEvaluator {
         // Listener errors never break evaluation.
       }
     }
-    if (alert.webhook_url !== null && alert.webhook_url.length > 0) {
+    // An acknowledged alert still transitions and still shows in the UI — it
+    // just stops paging the person who already knows.
+    if (!acknowledged && alert.webhook_url !== null && alert.webhook_url.length > 0) {
       void sendWebhookNotification(alert.webhook_url, event);
     }
   }

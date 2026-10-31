@@ -8,8 +8,7 @@ import {
 } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
 
-const inputClass =
-  "w-full rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/40";
+const inputClass = "field";
 
 /**
  * /reset — forgot-password flow, two modes in one page:
@@ -58,9 +57,11 @@ export function ResetPage(): JSX.Element {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-6 p-4">
-      <div className="flex items-center gap-2">
-        <Radio className="h-6 w-6 text-emerald-300" aria-hidden />
-        <h1 className="text-2xl font-bold tracking-tight">Passthrough</h1>
+      <div className="flex items-center gap-2.5">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#5eead4]/30 bg-[#5eead4]/10 text-[#5eead4]">
+          <Radio className="h-4 w-4" aria-hidden />
+        </span>
+        <h1 className="text-2xl font-semibold tracking-tight text-white">Passthrough</h1>
       </div>
 
       <motion.div
@@ -72,8 +73,8 @@ export function ResetPage(): JSX.Element {
         {token !== "" ? (
           <>
             <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-emerald-300" aria-hidden />
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
+              <KeyRound className="h-4 w-4 text-[#5eead4]" aria-hidden />
+              <h2 className="eyebrow text-[#c3cad8]">
                 Choose a new password
               </h2>
             </div>
@@ -84,7 +85,7 @@ export function ResetPage(): JSX.Element {
               }}
             >
               <div>
-                <label htmlFor="new-password" className="mb-1 block text-xs text-zinc-400">
+                <label htmlFor="new-password" className="field-label">
                   New password
                 </label>
                 <input
@@ -100,7 +101,7 @@ export function ResetPage(): JSX.Element {
                 />
               </div>
               {error !== null ? (
-                <div role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+                <div role="alert" className="rounded-lg border border-[#fb7185]/40 bg-[#fb7185]/10 px-3 py-2 text-xs text-[#fda4af]">
                   {error}
                 </div>
               ) : null}
@@ -108,7 +109,7 @@ export function ResetPage(): JSX.Element {
                 type="submit"
                 disabled={submitting}
                 title="Set the new password and sign in"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn btn-primary w-full gap-2 px-4 py-2.5 text-sm"
               >
                 <KeyRound className="h-4 w-4" aria-hidden />
                 {submitting ? "Saving…" : "Set new password"}
@@ -117,15 +118,15 @@ export function ResetPage(): JSX.Element {
           </>
         ) : sentTo !== null ? (
           <div className="space-y-3" data-testid="reset-requested">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
+            <h2 className="eyebrow text-[#c3cad8]">
               Check your inbox
             </h2>
-            <p className="text-sm text-zinc-400">
-              If an account exists for <span className="text-zinc-200">{sentTo}</span>,
+            <p className="text-sm leading-relaxed text-[#8d95a8]">
+              If an account exists for <span className="text-[#e6e9f0]">{sentTo}</span>,
               a reset link is on its way. It expires in 30 minutes.
             </p>
             {devLink !== null ? (
-              <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              <p className="rounded-lg border border-[#fbbf24]/30 bg-[#fbbf24]/10 px-3 py-2 text-xs leading-relaxed text-[#fcd34d]">
                 Email sending isn't configured yet — use this link to reset now:{" "}
                 <a
                   className="break-all font-semibold text-amber-200 underline underline-offset-2"
@@ -136,19 +137,19 @@ export function ResetPage(): JSX.Element {
                 </a>
               </p>
             ) : null}
-            <a href="/auth" className="block text-xs text-zinc-500 transition hover:text-emerald-300">
+            <a href="/login" className="block text-xs text-[#8d95a8] transition hover:text-[#7df0dc]">
               ← Back to sign in
             </a>
           </div>
         ) : (
           <>
             <div className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-emerald-300" aria-hidden />
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
+              <KeyRound className="h-4 w-4 text-[#5eead4]" aria-hidden />
+              <h2 className="eyebrow text-[#c3cad8]">
                 Reset your password
               </h2>
             </div>
-            <p className="mt-2 text-xs text-zinc-500">
+            <p className="mt-2 text-xs leading-relaxed text-[#8d95a8]">
               Enter your account email and we'll send a link to set a new password.
             </p>
             <form
@@ -158,7 +159,7 @@ export function ResetPage(): JSX.Element {
               }}
             >
               <div>
-                <label htmlFor="reset-email" className="mb-1 block text-xs text-zinc-400">
+                <label htmlFor="reset-email" className="field-label">
                   Email
                 </label>
                 <input
@@ -173,7 +174,7 @@ export function ResetPage(): JSX.Element {
                 />
               </div>
               {error !== null ? (
-                <div role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+                <div role="alert" className="rounded-lg border border-[#fb7185]/40 bg-[#fb7185]/10 px-3 py-2 text-xs text-[#fda4af]">
                   {error}
                 </div>
               ) : null}
@@ -181,15 +182,15 @@ export function ResetPage(): JSX.Element {
                 type="submit"
                 disabled={submitting}
                 title="Send a password-reset link to this email"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                className="btn btn-primary w-full gap-2 px-4 py-2.5 text-sm"
               >
                 <KeyRound className="h-4 w-4" aria-hidden />
                 {submitting ? "Sending…" : "Send reset link"}
               </button>
             </form>
-            <p className="mt-4 text-center text-xs text-zinc-500">
+            <p className="mt-4 text-center text-xs text-[#8d95a8]">
               Remembered it?{" "}
-              <a href="/auth" className="font-semibold text-emerald-300 hover:text-emerald-200">
+              <a href="/login" className="font-semibold text-[#7df0dc] hover:text-[#5eead4]">
                 Back to sign in
               </a>
             </p>
@@ -197,10 +198,10 @@ export function ResetPage(): JSX.Element {
         )}
       </motion.div>
 
-      <p className="text-center text-[11px] text-zinc-600">
-        <a href="/terms" className="underline-offset-2 hover:text-zinc-400 hover:underline">Terms of Service</a>
+      <p className="text-center text-[11px] text-[#5f6779]">
+        <a href="/terms" className="underline-offset-2 hover:text-[#c3cad8] hover:underline">Terms of Service</a>
         <span className="mx-2">·</span>
-        <a href="/privacy" className="underline-offset-2 hover:text-zinc-400 hover:underline">Privacy Policy</a>
+        <a href="/privacy" className="underline-offset-2 hover:text-[#c3cad8] hover:underline">Privacy Policy</a>
       </p>
     </div>
   );

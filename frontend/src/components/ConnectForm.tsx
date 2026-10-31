@@ -49,8 +49,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
     }
   }
 
-  const inputClass =
-    "w-full rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none transition focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/40";
+  const inputClass = "field";
 
   return (
     <motion.form
@@ -63,15 +62,13 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
       data-testid="connect-form"
     >
       <div className="flex items-center gap-2">
-        <Plug className="h-4 w-4 text-emerald-300" aria-hidden />
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">
-          Connect your monitoring stack
-        </h2>
+        <Plug className="h-4 w-4 text-[#5eead4]" aria-hidden />
+        <h2 className="eyebrow text-[#c3cad8]">Connect your monitoring stack</h2>
       </div>
 
       {/* Prometheus / Grafana / Auto toggle — narrows the fields shown. */}
       <div
-        className="mt-4 grid grid-cols-3 gap-1 rounded-lg border border-zinc-800 bg-zinc-900/50 p-1"
+        className="segmented mt-4 grid-cols-3"
         role="tablist"
         aria-label="Upstream type"
       >
@@ -89,10 +86,8 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
             aria-selected={flavor === option.key}
             data-testid={`flavor-${option.key}`}
             onClick={() => setFlavor(option.key)}
-            className={`flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
-              flavor === option.key
-                ? "bg-emerald-500/15 text-emerald-300"
-                : "text-zinc-500 hover:text-zinc-300"
+            className={`segmented-item ${
+              flavor === option.key ? "segmented-item-active" : ""
             }`}
           >
             {option.key === "grafana" ? (
@@ -108,7 +103,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
       <div className="mt-5 space-y-4">
         {fixedTenantId === undefined ? (
           <div>
-            <label htmlFor="tenantId" className="mb-1 block text-xs text-zinc-400">
+            <label htmlFor="tenantId" className="field-label">
               Tenant ID
             </label>
             <input
@@ -123,8 +118,8 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
           </div>
         ) : null}
         <div>
-          <label htmlFor="prometheusUrl" className="mb-1 block text-xs text-zinc-400">
-            Prometheus or Grafana URL <span className="text-zinc-600">(auto-detected)</span>
+          <label htmlFor="prometheusUrl" className="field-label">
+            Prometheus or Grafana URL <span className="text-[#5f6779]">(auto-detected)</span>
           </label>
           <input
             id="prometheusUrl"
@@ -136,20 +131,20 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
             placeholder="prometheus.internal:9090 · https://prom.example.com · grafana link"
             required
           />
-          <p className="mt-1 text-[11px] text-zinc-600">
+          <p className="mt-1.5 text-[11px] leading-relaxed text-[#5f6779]">
             Bare <span className="font-mono">ip:port</span> works (http:// is
             added automatically); pasting a Grafana dashboard link is fine — the
             mount path is detected for you.
           </p>
         </div>
         <div>
-          <label htmlFor="authToken" className="mb-1 block text-xs text-zinc-400">
+          <label htmlFor="authToken" className="field-label">
             {flavor === "grafana"
               ? "Grafana service-account token "
               : flavor === "prometheus"
                 ? "Prometheus bearer token "
                 : "Auth token "}
-            <span className="text-zinc-600">
+            <span className="normal-case tracking-normal text-[#5f6779]">
               (
               {flavor === "grafana"
                 ? "required for Grafana — Administration → Service accounts"
@@ -172,7 +167,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
       <button
         type="submit"
         disabled={submitting}
-        className="mt-6 w-full rounded-lg bg-emerald-500/90 px-4 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+        className="btn btn-primary mt-6 w-full px-4 py-2.5 text-sm"
       >
         {submitting ? "Connecting…" : "Connect"}
       </button>
@@ -182,7 +177,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
           type="button"
           data-testid="demo-connect"
           title="Fill in the public demo Prometheus — real live metrics, nothing to install"
-          className="mt-2 w-full text-center text-xs text-zinc-500 underline-offset-2 transition hover:text-zinc-300 hover:underline"
+          className="btn btn-quiet mt-2 w-full text-[11px] underline-offset-2 hover:underline"
           onClick={() => {
             setPrometheusUrl("https://prometheus.demo.prometheus.io");
             setAuthToken("");
@@ -195,7 +190,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
       {failedOnce ? (
         <button
           type="button"
-          className="mt-2 w-full text-center text-xs text-zinc-500 underline-offset-2 transition hover:text-zinc-300 hover:underline"
+          className="btn btn-quiet mt-2 w-full text-[11px] underline-offset-2 hover:underline"
           onClick={() => {
             setPrometheusUrl("https://prometheus.demo.prometheus.io");
             setAuthToken("");
@@ -209,8 +204,8 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
         <div
           className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
             result.ok
-              ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-300"
-              : "border-rose-500/40 bg-rose-500/10 text-rose-300"
+              ? "border-[#5eead4]/30 bg-[#5eead4]/5 text-[#7df0dc]"
+              : "border-[#fb7185]/40 bg-[#fb7185]/10 text-[#fda4af]"
           }`}
           role="status"
         >
@@ -229,7 +224,7 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
                   </>
                 )}
               </span>
-              <span className="text-emerald-400/80">
+              <span className="text-[#8d95a8]">
                 {result.detail ?? "Streaming live data."} · {result.latencyMs}ms
               </span>
             </span>
@@ -240,10 +235,10 @@ export function ConnectForm({ onConnected, fixedTenantId }: ConnectFormProps): J
       )}
       {error !== null && (
         <div className="mt-3" role="alert">
-          <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+          <p className="rounded-lg border border-[#fb7185]/40 bg-[#fb7185]/10 px-3 py-2 text-xs text-[#fda4af]">
             {error}
           </p>
-          <p className="mt-1.5 text-[11px] text-zinc-500">
+          <p className="mt-1.5 text-[11px] leading-relaxed text-[#8d95a8]">
             Double-check the URL and that it's reachable from the internet —
             private/internal hostnames can't be reached. Need data fast? Use the
             demo link below.

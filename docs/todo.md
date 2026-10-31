@@ -18,7 +18,7 @@ Priority legend: 🔴 now (next release) · 🟠 soon (2–3 releases) · 🟢 l
 | Item | Why it matters | When / trigger |
 | :--- | :--- | :--- |
 | Alert webhook deliverability check | The evaluator posts to a user-supplied URL with retries; validate a real receiver (Slack/Discord webhook or similar) end-to-end. | First time someone configures a real webhook |
-| Persistent firing-alert state for the header badge | The badge is event-driven (SSE transitions); it misses state for alerts that were already firing before the tab opened and never clears when a firing alert is deleted. A `GET /api/alerts/:tenantId/firing` seed (or badge hydration from the alerts list) closes the gap. | Next UI pass on alerting |
+| Ack/silence beyond one hour, and scheduled silences | The UI offers a single "Ack 1h" action (API accepts 0–1440 minutes and 0 = indefinite). A duration picker, cluster-wide silences by label, and quiet hours are not built yet. | Next alerting pass, when on-call rotations are actually in use |
 
 ## 🟢 Later — explicitly deferred until prod-ready
 

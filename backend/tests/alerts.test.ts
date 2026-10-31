@@ -9,6 +9,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const sendWebhook = vi.hoisted(() => vi.fn(async () => true));
 const recordEval = vi.hoisted(() => vi.fn(async () => undefined));
+const recordEvent = vi.hoisted(() => vi.fn(async () => undefined));
+const clearAck = vi.hoisted(() => vi.fn(async () => true));
 const listEnabled = vi.hoisted(() => vi.fn(async () => []));
 const instantQuery = vi.hoisted(() => vi.fn());
 
@@ -21,6 +23,8 @@ vi.mock("../src/db/schema.js", async (importOriginal) => {
     ...actual,
     listEnabledAlerts: listEnabled,
     recordAlertEvaluation: recordEval,
+    recordAlertEvent: recordEvent,
+    clearAlertAcknowledgement: clearAck,
   };
 });
 vi.mock("../src/services/prometheus.js", () => ({
@@ -28,6 +32,7 @@ vi.mock("../src/services/prometheus.js", () => ({
 }));
 
 import { getAlertEvaluator, resetAlertEvaluator } from "../src/services/alertEvaluator.js";
+import { isAcknowledgementActive } from "../src/services/alertAcknowledgement.js";
 
 // The real webhook sender (evaluator tests get the mock via module mock;
 // these tests exercise the genuine SSRF guard + fetch payload).
@@ -107,6 +112,8 @@ describe("alert evaluator state machine", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     recordEval.mockClear();
+    recordEvent.mockClear();
+    clearAck.mockClear();
     sendWebhook.mockClear();
     resetAlertEvaluator();
   });
@@ -192,5 +199,77 @@ describe("alert evaluator state machine", () => {
       1,
       expect.objectContaining({ state: "firing" })
     );
+  });
+
+  it("acknowledged alert still transitions and records history, but never notifies", async () => {
+    instantQuery.mockImplementation(async () => sample(99));
+    listEnabled.mockResolvedValue([
+      alertRow({
+        for_seconds: 0,
+        acknowledged_at: new Date().toISOString(),
+        acknowledged_until: null,
+        acknowledged_by: "oncall@test.dev",
+      }),
+    ]);
+    const evaluator = getAlertEvaluator();
+    const events: Array<{ state: string; acknowledged: boolean }> = [];
+    evaluator.onEvent((event) => events.push({ state: event.state, acknowledged: event.acknowledged }));
+
+    await evaluator.scan();
+
+    // The alert is real: it fires, and the UI is told. It just does not page.
+    expect(events).toEqual([{ state: "firing", acknowledged: true }]);
+    expect(recordEval).toHaveBeenLastCalledWith(1, expect.objectContaining({ state: "firing" }));
+    expect(recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ alertId: 1, state: "firing", acknowledged: true })
+    );
+    expect(sendWebhook).not.toHaveBeenCalled();
+  });
+
+  it("clears an expired acknowledgement and resumes notifications", async () => {
+    instantQuery.mockImplementation(async () => sample(99));
+    const past = new Date(Date.now() - 60_000).toISOString();
+    listEnabled.mockResolvedValue([
+      alertRow({ for_seconds: 0, acknowledged_at: past, acknowledged_until: past }),
+    ]);
+    const evaluator = getAlertEvaluator();
+    await evaluator.scan();
+
+    expect(clearAck).toHaveBeenCalledWith("t_test", 1);
+    expect(recordEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ state: "firing", acknowledged: false })
+    );
+    expect(sendWebhook).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("alert acknowledgement rule", () => {
+  it("treats an untouched alert as not acknowledged", () => {
+    expect(isAcknowledgementActive({ acknowledged_at: null, acknowledged_until: null })).toBe(false);
+  });
+
+  it("treats an ack without an end time as indefinite", () => {
+    expect(
+      isAcknowledgementActive({
+        acknowledged_at: new Date(Date.now() - 86_400_000).toISOString(),
+        acknowledged_until: null,
+      })
+    ).toBe(true);
+  });
+
+  it("expires a timed ack at its deadline", () => {
+    const now = new Date("2026-10-31T12:00:00.000Z");
+    expect(
+      isAcknowledgementActive(
+        { acknowledged_at: "2026-10-31T11:00:00.000Z", acknowledged_until: "2026-10-31T13:00:00.000Z" },
+        now
+      )
+    ).toBe(true);
+    expect(
+      isAcknowledgementActive(
+        { acknowledged_at: "2026-10-31T11:00:00.000Z", acknowledged_until: "2026-10-31T11:30:00.000Z" },
+        now
+      )
+    ).toBe(false);
   });
 });
